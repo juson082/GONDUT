@@ -1,0 +1,40 @@
+name: memo_graph
+description: Offline-first memo and graph prototype.
+publish_to: none
+version: 0.2.0+2
+environment:
+  sdk: '>=3.12.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  sqflite: ^2.3.3
+  path: ^1.9.0
+  file_picker: ^13.3.0
+  flutter_quill: ^11.5.0
+
+  path_provider: ^2.1.4
+  sherpa_onnx: 2.0.1
+  record: 6.2.1
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  sqflite_common_ffi: ^2.4.5
+flutter:
+  uses-material-design: true
+  fonts:
+    - family: GondutHand
+      fonts:
+        - asset: assets/NanumPenScript-Regular.ttf
+  assets:
+    - assets/whisper/
+    - assets/llm/
+    - assets/handwriting/korean/
+    - assets/handwriting/chinese/
+    - assets/handwriting/latin/
+    - licenses/
+
+
+

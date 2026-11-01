@@ -1,0 +1,12 @@
+Handwriting recognition model attribution
+
+Korean handwriting: korean-handwriting-rec by VerifiedIdiot / Rebeccaaaaaaaa
+https://github.com/VerifiedIdiot/korean-handwriting-rec
+Model and code: Apache License 2.0. The author states the model uses AI Hub data and that the datasets have separate terms. The datasets themselves are not distributed here. The author credits MSIT and NIA for the AI Hub datasets used in training.
+
+Chinese/Japanese and Latin recognition: PaddleOCR PP-OCRv5, ONNX conversions by monkt
+https://huggingface.co/monkt/paddleocr-onnx
+Model card license: Apache License 2.0.
+
+Inference runtime: ONNX Runtime, MIT License.
+https://github.com/microsoft/onnxruntime

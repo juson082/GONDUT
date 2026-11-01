@@ -1,0 +1,60 @@
+plugins {
+    id("com.android.application")
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id("dev.flutter.flutter-gradle-plugin")
+}
+
+android {
+    namespace = "com.example.memo_graph"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    // Some transitive plugins package 32-bit libraries even when Flutter's
+    // target platforms are 64-bit. LiteRT-LM is only available for 64-bit.
+    packaging {
+        jniLibs {
+            excludes += setOf("**/armeabi-v7a/**", "**/x86/**")
+        }
+    }
+
+    defaultConfig {
+        // Confirm this identifier in Play Console before the first upload.
+        applicationId = "app.gondut.memo"
+        // You can update the following values to match your application needs.
+        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        minSdk = flutter.minSdkVersion
+        targetSdk = flutter.targetSdkVersion
+        // LiteRT-LM ships native libraries for these 64-bit ABIs only.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
+        // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
+        // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
+        // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
+        // flag during build.
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+flutter {
+    source = "../.."
+}
+
+dependencies {
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.18.1")
+    // The JNI bridge uses the compatible 1.28 runtime supplied by sherpa_onnx.
+    implementation(files("libs/onnxruntime-android-1.28.0-shared.aar"))
+}

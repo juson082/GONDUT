@@ -1,0 +1,11 @@
+Local AI components
+
+Qwen3-0.6B, Copyright Qwen team. Apache License, Version 2.0.
+Model: https://huggingface.co/litert-community/Qwen3-0.6B-int4
+Revision: 256f33043931947c173d7f3cc1d84ee7a8538cc2
+Model SHA-256: 2df6821ec12702dafd33915e7a1a1adc7c4b053f3672fd9555dfaf3a114c4139
+
+LiteRT-LM, Copyright Google LLC. Apache License, Version 2.0.
+Source: https://github.com/google-ai-edge/LiteRT-LM
+
+The Apache License, Version 2.0, is included in sherpa-onnx-LICENSE.txt.
