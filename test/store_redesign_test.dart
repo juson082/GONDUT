@@ -48,6 +48,23 @@ void main() {
   tearDown(() async => store.db.close());
 
   test(
+    'freezing initial positions never moves manually placed nodes',
+    () async {
+      final memo = await store.addMemo('tree');
+      final a = await store.addBranch(memo, 'placed', x: 120, y: 300);
+      final b = await store.addBranch(memo, 'legacy');
+      await store.saveMissingBranchPositions(memo, {
+        a: (999.0, 999.0),
+        b: (400.0, 600.0),
+      });
+      final rows = await store.branches(memo);
+      expect(rows.singleWhere((r) => r['id'] == a)['x'], 120.0);
+      expect(rows.singleWhere((r) => r['id'] == b)['x'], 400.0);
+      expect(rows.singleWhere((r) => r['id'] == b)['y'], 600.0);
+    },
+  );
+
+  test(
     'voice commands only attach to a uniquely named memo and branch',
     () async {
       final note = await store.addMemo('게임 개발\n투자 및 작업 기록');

@@ -44,6 +44,12 @@ ThemeData paperTheme(String name) {
     colorScheme: scheme,
     scaffoldBackgroundColor: background,
     appBarTheme: AppBarTheme(backgroundColor: background, centerTitle: false),
+    floatingActionButtonTheme: FloatingActionButtonThemeData(
+      backgroundColor: paper,
+      foregroundColor: scheme.primary,
+      elevation: 0,
+      highlightElevation: 1,
+    ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: background,
       indicatorColor: scheme.primaryContainer,

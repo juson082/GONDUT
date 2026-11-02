@@ -123,6 +123,20 @@ class Store {
     if (!placements.containsKey(branchId)) throw StateError('이동할 위치가 없습니다.');
   });
 
+  Future<void> saveMissingBranchPositions(
+    int memoId,
+    Map<int, (double, double)> positions,
+  ) => db.transaction((tx) async {
+    for (final entry in positions.entries) {
+      await tx.update(
+        'memo_branches',
+        {'x': entry.value.$1, 'y': entry.value.$2},
+        where: 'memo_id=? AND id=? AND (x IS NULL OR y IS NULL)',
+        whereArgs: [memoId, entry.key],
+      );
+    }
+  });
+
   Future<String?> memoRichText(int id) async {
     final rows = await db.query(
       'memos',

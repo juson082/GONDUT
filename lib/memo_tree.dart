@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'store.dart';
 import 'app_strings.dart';
 import 'plant_layout.dart';
+import 'plant_lines.dart';
 
 /// A tree belongs to one memo; it never links separate memos together.
 class MemoTree extends StatefulWidget {
@@ -180,7 +181,24 @@ class _MemoTreeState extends State<MemoTree>
   }
 
   Future<void> load() async {
-    final next = await widget.store.branches(widget.memoId);
+    var next = await widget.store.branches(widget.memoId);
+    if (next.any((row) => row['x'] is! num || row['y'] is! num)) {
+      final positions = placePlantNodes(
+        next,
+        layoutPlant(next, {}),
+        rootPosition,
+      );
+      await widget.store.saveMissingBranchPositions(widget.memoId, {
+        for (final row in next)
+          if ((row['x'] is! num || row['y'] is! num) &&
+              positions.containsKey(row['id']))
+            row['id'] as int: (
+              positions[row['id']]!.dx,
+              positions[row['id']]!.dy,
+            ),
+      });
+      next = await widget.store.branches(widget.memoId);
+    }
     if (mounted)
       setState(() {
         items = next;
@@ -641,11 +659,16 @@ class _MemoTreeState extends State<MemoTree>
                         child: Stack(
                           children: [
                             Positioned.fill(
-                              child: CustomPaint(
-                                painter: _TreeLines(
-                                  items,
-                                  displayPositions,
-                                  Theme.of(context).colorScheme.outline,
+                              child: AnimatedBuilder(
+                                animation: transformation,
+                                builder: (context, _) => CustomPaint(
+                                  painter: TreeLines(
+                                    items,
+                                    displayPositions,
+                                    Theme.of(context).colorScheme.outline,
+                                    zoomScale: transformation.value.storage[0]
+                                        .abs(),
+                                  ),
                                 ),
                               ),
                             ),
@@ -694,18 +717,31 @@ class _MemoTreeState extends State<MemoTree>
                             for (final item in items)
                               if (displayPositions.containsKey(item['id']))
                                 Positioned(
+                                  key: ValueKey('branch-${item['id']}'),
                                   left: displayPositions[item['id']]!.dx,
                                   top: displayPositions[item['id']]!.dy,
-                                  child: AnimatedBuilder(
-                                    animation: transformation,
-                                    builder: (context, _) => node(
-                                      item,
-                                      controlOpacity:
-                                          ((transformation.value.storage[0]
-                                                          .abs() -
-                                                      .55) /
-                                                  .25)
-                                              .clamp(0.0, 1.0),
+                                  child: TweenAnimationBuilder<double>(
+                                    tween: Tween(begin: .9, end: 1),
+                                    duration: const Duration(milliseconds: 240),
+                                    curve: Curves.easeOutCubic,
+                                    builder: (context, scale, child) => Opacity(
+                                      opacity: ((scale - .9) * 10).clamp(0, 1),
+                                      child: Transform.scale(
+                                        scale: scale,
+                                        child: child,
+                                      ),
+                                    ),
+                                    child: AnimatedBuilder(
+                                      animation: transformation,
+                                      builder: (context, _) => node(
+                                        item,
+                                        controlOpacity:
+                                            ((transformation.value.storage[0]
+                                                            .abs() -
+                                                        .55) /
+                                                    .25)
+                                                .clamp(0.0, 1.0),
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -912,55 +948,4 @@ class _BranchDialogState extends State<_BranchDialog> {
       ),
     ],
   );
-}
-
-class _TreeLines extends CustomPainter {
-  _TreeLines(this.items, this.positions, this.color);
-  final List<Map<String, Object?>> items;
-  final Map<int, Offset> positions;
-  final Color color;
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1.25
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-    for (final item in items) {
-      final child = positions[item['id']];
-      final parent = positions[item['parent_id'] ?? 0];
-      if (child == null || parent == null) continue;
-      final parentCenter = parent + const Offset(87, 43);
-      final childCenter = child + const Offset(87, 43);
-      final delta = childCenter - parentCenter;
-      if (delta.distance < 1) continue;
-      Offset edge(Offset center, Offset direction) {
-        final k = math.min(
-          direction.dx.abs() < .01 ? double.infinity : 87 / direction.dx.abs(),
-          direction.dy.abs() < .01 ? double.infinity : 43 / direction.dy.abs(),
-        );
-        return center + direction * k;
-      }
-
-      final from = edge(parentCenter, delta);
-      final to = edge(childCenter, -delta);
-      final bend = (to - from) * .35;
-      canvas.drawPath(
-        Path()
-          ..moveTo(from.dx, from.dy)
-          ..cubicTo(
-            from.dx + bend.dx,
-            from.dy,
-            to.dx - bend.dx,
-            to.dy,
-            to.dx,
-            to.dy,
-          ),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _TreeLines old) => true;
 }

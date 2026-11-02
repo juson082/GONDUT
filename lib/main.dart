@@ -11,6 +11,7 @@ import 'voice.dart';
 import 'local_ai.dart';
 import 'paper_theme.dart';
 import 'paper_surface.dart';
+import 'tree_preview.dart';
 import 'sketch_icons.dart';
 import 'memo_tree.dart';
 import 'process_draft_page.dart';
@@ -132,6 +133,7 @@ class _HomeState extends State<Home> {
   final TransformationController graphTransform = TransformationController();
   int refreshVersion = 0;
   List<Map<String, Object?>> memos = [], nodes = [], edges = [];
+  Map<int, List<Map<String, Object?>>> memoTrees = {};
   @override
   void initState() {
     super.initState();
@@ -141,11 +143,17 @@ class _HomeState extends State<Home> {
   Future<void> refresh() async {
     final version = ++refreshVersion;
     final m = await widget.store.memos(query);
+    final trees = await Future.wait(
+      m.map((row) => widget.store.branches(row['id'] as int)),
+    );
     final n = await widget.store.nodes();
     final e = await widget.store.edges();
     if (mounted && version == refreshVersion) {
       setState(() {
         memos = m;
+        memoTrees = {
+          for (var i = 0; i < m.length; i++) m[i]['id'] as int: trees[i],
+        };
         nodes = n.map((row) => Map<String, Object?>.from(row)).toList();
         edges = e;
       });
@@ -185,8 +193,8 @@ class _HomeState extends State<Home> {
         bytes: Uint8List.fromList(utf8.encode(await widget.store.backup())),
       );
       if (result != null && mounted) message(tr(context, '백업 저장 완료'));
-    } catch (e) {
-      if (mounted) message('${tr(context, '백업 실패')}: $e');
+    } catch (_) {
+      if (mounted) message(tr(context, '백업 실패'));
     }
   }
 
@@ -223,8 +231,8 @@ class _HomeState extends State<Home> {
       await widget.onThemeRestored?.call();
       await refresh();
       if (mounted) message(tr(context, '복원 완료'));
-    } catch (e) {
-      if (mounted) message('${tr(context, '복원 실패')}: $e');
+    } catch (_) {
+      if (mounted) message(tr(context, '복원 실패'));
     }
   }
 
@@ -478,18 +486,29 @@ class _HomeState extends State<Home> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                        child: Text(
-                          content.trim().isEmpty
-                              ? tr(context, '새 메모')
-                              : content.trim(),
-                          maxLines: 5,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
+                        child: (memoTrees[m['id']]?.isNotEmpty ?? false)
+                            ? TreePreview(
+                                key: ValueKey('tree-preview-${m['id']}'),
+                                items: memoTrees[m['id']]!,
+                              )
+                            : Text(
+                                content.trim().isEmpty
+                                    ? tr(context, '새 메모')
+                                    : content.trim(),
+                                maxLines: 5,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
                       ),
                       SizedBox(height: 8),
                       Text(
-                        tr(context, '길게 눌러 더보기'),
+                        (memoTrees[m['id']]?.isNotEmpty ?? false)
+                            ? (content.trim().isEmpty
+                                  ? tr(context, '새 메모')
+                                  : content.trim())
+                            : tr(context, '길게 눌러 더보기'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.labelSmall,
                       ),
                     ],
@@ -945,8 +964,8 @@ class _HomeState extends State<Home> {
         return;
       }
       if (mounted) await showDraft(id);
-    } catch (e) {
-      if (mounted) message('${tr(context, '분석 실패')}: $e');
+    } catch (_) {
+      if (mounted) message(tr(context, '분석 실패'));
     }
   }
 
@@ -1271,7 +1290,9 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
                                       fontFamily: 'GondutHand',
                                       fontSize: 22,
                                       height: 1.25,
-                                      color: Theme.of(context).colorScheme.onSurface,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface,
                                       fontWeight: FontWeight.normal,
                                       decoration: TextDecoration.none,
                                     ),
@@ -1411,7 +1432,12 @@ class _VoicePageState extends State<VoicePage> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => status = '${tr(context, '녹음 시작 실패')}: $e');
+      if (mounted)
+        setState(
+          () => status = e is StateError && e.message == '마이크 권한이 필요합니다'
+              ? tr(context, '마이크 권한이 필요합니다')
+              : tr(context, '녹음 시작 실패'),
+        );
     }
   }
 
@@ -1429,11 +1455,11 @@ class _VoicePageState extends State<VoicePage> {
           mounted ? tr(context, '녹음 파일이 없습니다') : 'Recording file is missing',
         );
       await processRecording(path);
-    } catch (e) {
+    } catch (_) {
       if (mounted)
         setState(
           () => status =
-              '${tr(context, '처리 실패')}: $e\n${tr(context, '녹음 파일은 기기에 보관됩니다.')}',
+              '${tr(context, '처리 실패')}\n${tr(context, '녹음 파일은 기기에 보관됩니다.')}',
         );
     } finally {
       await loadRecordings();
@@ -1492,11 +1518,10 @@ class _VoicePageState extends State<VoicePage> {
               ? '${tr(context, '원문과 AI 초안을 저장했습니다. 메모를 길게 눌러 초안을 확인하세요.')}\n\n$text'
               : '${tr(context, '메모나 초안이 변경되어 새 분석 결과를 저장하지 않았습니다.')}\n\n$text',
         );
-    } catch (e) {
+    } catch (_) {
       if (mounted)
         setState(
-          () => status =
-              '${tr(context, '원문을 저장했지만 AI 분석에 실패했습니다.')}\n$e\n\n$text',
+          () => status = '${tr(context, '원문을 저장했지만 AI 분석에 실패했습니다.')}\n\n$text',
         );
     }
   }
@@ -1508,11 +1533,11 @@ class _VoicePageState extends State<VoicePage> {
     });
     try {
       await processRecording(path);
-    } catch (e) {
+    } catch (_) {
       if (mounted)
         setState(
           () => status =
-              '${tr(context, '처리 실패')}: $e\n${tr(context, '녹음 파일은 기기에 보관됩니다.')}',
+              '${tr(context, '처리 실패')}\n${tr(context, '녹음 파일은 기기에 보관됩니다.')}',
         );
     } finally {
       if (mounted) setState(() => busy = false);

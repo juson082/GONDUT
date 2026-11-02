@@ -15,6 +15,11 @@ String? additionalTranslation(String code, String english) {
 }
 
 const _translations = <String, (String, String, String)>{
+  'Microphone permission is required': (
+    'マイクの使用許可が必要です',
+    '需要麦克风权限',
+    'Se necesita permiso para usar el micrófono',
+  ),
   'Node shape': ('ノードの形', '节点形状', 'Forma del nodo'),
   'Rounded rectangle': ('角丸四角形', '圆角矩形', 'Rectángulo redondeado'),
   'Pill': ('カプセル', '胶囊形', 'Cápsula'),

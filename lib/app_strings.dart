@@ -1,6 +1,9 @@
 import 'package:flutter/widgets.dart';
 import 'extra_translations.dart';
 
+@visibleForTesting
+Map<String, String> get englishTranslationsForTest => _english;
+
 /// Korean strings are stable internal keys; user content is never translated.
 String tr(BuildContext context, String korean) {
   final code = Localizations.localeOf(context).languageCode;
@@ -10,6 +13,7 @@ String tr(BuildContext context, String korean) {
 }
 
 const _english = <String, String>{
+  '마이크 권한이 필요합니다': 'Microphone permission is required',
   '노드 모양': 'Node shape',
   '둥근 사각형': 'Rounded rectangle',
   '알약': 'Pill',

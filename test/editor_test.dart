@@ -5,6 +5,7 @@ import 'package:memo_graph/main.dart';
 import 'package:memo_graph/store.dart';
 import 'package:memo_graph/paper_theme.dart';
 import 'package:memo_graph/memo_tree.dart';
+import 'package:memo_graph/tree_preview.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -24,6 +25,20 @@ class MemoryStore extends Store {
   @override
   Future<List<Map<String, Object?>>> branches(int memoId) async =>
       List.of(treeItems);
+  @override
+  Future<void> saveMissingBranchPositions(
+    int memoId,
+    Map<int, (double, double)> positions,
+  ) async {
+    for (final entry in positions.entries) {
+      final item = treeItems.firstWhere((row) => row['id'] == entry.key);
+      if (item['x'] is! num || item['y'] is! num) {
+        item['x'] = entry.value.$1;
+        item['y'] = entry.value.$2;
+      }
+    }
+  }
+
   @override
   Future<void> saveBranchPlacement(
     int memoId,
@@ -101,6 +116,17 @@ class MemoryStore extends Store {
   }
 }
 
+class GardenStore extends MemoryStore {
+  @override
+  Future<List<Map<String, Object?>>> memos([String query = '']) async => [
+    {'id': 1, 'text': '한 가지 생각', 'title': null},
+    {'id': 2, 'text': '비어 있는 나무', 'title': null},
+  ];
+  @override
+  Future<List<Map<String, Object?>>> branches(int memoId) async =>
+      memoId == 1 ? List.of(treeItems) : [];
+}
+
 void main() {
   setUp(() {
     TestWidgetsFlutterBinding.ensureInitialized()
@@ -112,6 +138,32 @@ void main() {
   tearDown(() {
     TestWidgetsFlutterBinding.ensureInitialized().platformDispatcher
         .clearLocalesTestValue();
+  });
+  testWidgets('home shows the saved tree only for the matching note', (
+    tester,
+  ) async {
+    final store = GardenStore();
+    store.treeItems.add({
+      'id': 1,
+      'memo_id': 1,
+      'parent_id': null,
+      'text': '가지',
+      'x': 3000.0,
+      'y': 2700.0,
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('ko'),
+        supportedLocales: const [Locale('ko')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        home: Home(store),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('tree-preview-1')), findsOneWidget);
+    expect(find.byType(TreePreview), findsOneWidget);
+    expect(find.text('비어 있는 나무'), findsOneWidget);
+    expect(store.treeItems.single['x'], 3000.0);
   });
   testWidgets('leaving editor saves the latest text', (tester) async {
     final store = MemoryStore();
@@ -549,6 +601,41 @@ void main() {
       await tester.pumpWidget(MemoApp(MemoryStore()));
       await tester.pumpAndSettle();
       expect(find.text(entry.$2), findsOneWidget);
+    });
+  }
+
+  for (final entry in <(String, String, String)>[
+    ('ko', '빈 곳을 두 번 눌러 노드를 추가하세요', 'AI 과정 초안'),
+    ('en', 'Double-tap an empty spot to add a node', 'AI process draft'),
+    ('ja', '空いている場所をダブルタップしてノードを追加', 'AIの過程下書き'),
+    ('zh', '双击空白处添加节点', 'AI 过程草稿'),
+    (
+      'es',
+      'Toca dos veces un espacio vacío para añadir un nodo',
+      'Borrador de proceso con IA',
+    ),
+  ]) {
+    testWidgets('tree controls use the selected ${entry.$1} language', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: Locale(entry.$1),
+          supportedLocales: [Locale(entry.$1)],
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          home: Scaffold(
+            body: MemoTree(store: MemoryStore(), memoId: 1, onGenerate: () {}),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(entry.$2), findsOneWidget);
+      expect(find.text(entry.$3), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   }
 
