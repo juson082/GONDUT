@@ -4,6 +4,7 @@ import 'store.dart';
 import 'app_strings.dart';
 import 'plant_layout.dart';
 import 'plant_lines.dart';
+import 'notebook_motion.dart';
 
 /// A tree belongs to one memo; it never links separate memos together.
 class MemoTree extends StatefulWidget {
@@ -156,6 +157,10 @@ class _MemoTreeState extends State<MemoTree>
       )
       ..scaleByDouble(scale, scale, scale, 1);
     fitAnimation.stop();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      transformation.value = target;
+      return;
+    }
     fitTween = Matrix4Tween(begin: transformation.value.clone(), end: target)
         .animate(
           CurvedAnimation(parent: fitAnimation, curve: Curves.easeOutCubic),
@@ -430,7 +435,9 @@ class _MemoTreeState extends State<MemoTree>
       barrierDismissible: true,
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
       barrierColor: Colors.black38,
-      transitionDuration: const Duration(milliseconds: 220),
+      transitionDuration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 220),
       transitionBuilder: (context, animation, _, child) => FadeTransition(
         opacity: animation,
         child: ScaleTransition(
@@ -441,14 +448,16 @@ class _MemoTreeState extends State<MemoTree>
         ),
       ),
       pageBuilder: (sheetContext, _, _) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         backgroundColor: Theme.of(
           sheetContext,
         ).colorScheme.surfaceContainerLowest,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: 440,
-            maxHeight: MediaQuery.sizeOf(sheetContext).height * .7,
+        child: SizedBox(
+          width: 520,
+          height: (MediaQuery.sizeOf(sheetContext).height * .6).clamp(
+            220.0,
+            520.0,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -499,7 +508,7 @@ class _MemoTreeState extends State<MemoTree>
                   const SizedBox(width: 8),
                 ],
               ),
-              Flexible(
+              Expanded(
                 child: InkWell(
                   onTap: () => Navigator.pop(sheetContext, 'edit'),
                   borderRadius: BorderRadius.circular(24),
@@ -546,57 +555,63 @@ class _MemoTreeState extends State<MemoTree>
 
   Widget node(Map<String, Object?> item, {required double controlOpacity}) {
     final id = item['id'] as int;
-    return GestureDetector(
-      onTap: () => showBranch(item),
-      onLongPressStart: (_) => setState(() {
-        draggingId = id;
-        dragOrigin = visiblePositions[id];
-        dragPosition = dragOrigin;
-      }),
-      onLongPressMoveUpdate: (details) => setState(() {
-        if (dragOrigin != null) {
-          final p =
-              dragOrigin! +
-              details.offsetFromOrigin / transformation.value.storage[0].abs();
-          dragPosition = Offset(p.dx.clamp(0, 5826), p.dy.clamp(0, 5914));
-        }
-      }),
-      onLongPressEnd: (_) => finishDrag(id),
-      child: AnimatedScale(
-        scale: draggingId == id ? 1.06 : 1,
-        duration: const Duration(milliseconds: 140),
-        child: Material(
-          elevation: draggingId == id ? 5 : 0,
-          color: Theme.of(context).colorScheme.surfaceContainerLowest
-              .withValues(alpha: .85 * controlOpacity),
-          shape: branchShape(
-            item['shape'] as String? ?? 'rounded',
-            BorderSide(
-              color: Theme.of(
-                context,
-              ).colorScheme.outlineVariant.withValues(alpha: controlOpacity),
+    return NotebookPress(
+      child: GestureDetector(
+        onTap: () => showBranch(item),
+        onLongPressStart: (_) => setState(() {
+          draggingId = id;
+          dragOrigin = visiblePositions[id];
+          dragPosition = dragOrigin;
+        }),
+        onLongPressMoveUpdate: (details) => setState(() {
+          if (dragOrigin != null) {
+            final p =
+                dragOrigin! +
+                details.offsetFromOrigin /
+                    transformation.value.storage[0].abs();
+            dragPosition = Offset(p.dx.clamp(0, 5826), p.dy.clamp(0, 5914));
+          }
+        }),
+        onLongPressEnd: (_) => finishDrag(id),
+        child: AnimatedScale(
+          scale: draggingId == id ? 1.06 : 1,
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 140),
+          child: Material(
+            elevation: draggingId == id ? 5 : 0,
+            color: Theme.of(context).colorScheme.surfaceContainerLowest
+                .withValues(alpha: .85 * controlOpacity),
+            shape: branchShape(
+              item['shape'] as String? ?? 'rounded',
+              BorderSide(
+                color: Theme.of(
+                  context,
+                ).colorScheme.outlineVariant.withValues(alpha: controlOpacity),
+              ),
             ),
-          ),
-          child: SizedBox(
-            width: 174,
-            height: 86,
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                child: SizedBox(
-                  width:
-                      (item['shape'] == 'circle' || item['shape'] == 'diamond')
-                      ? 75
-                      : 150,
-                  child: Text(
-                    item['text'] as String,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium,
+            child: SizedBox(
+              width: 174,
+              height: 86,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  child: SizedBox(
+                    width:
+                        (item['shape'] == 'circle' ||
+                            item['shape'] == 'diamond')
+                        ? 75
+                        : 150,
+                    child: Text(
+                      item['text'] as String,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
                   ),
                 ),
               ),
@@ -722,7 +737,10 @@ class _MemoTreeState extends State<MemoTree>
                                   top: displayPositions[item['id']]!.dy,
                                   child: TweenAnimationBuilder<double>(
                                     tween: Tween(begin: .9, end: 1),
-                                    duration: const Duration(milliseconds: 240),
+                                    duration:
+                                        MediaQuery.disableAnimationsOf(context)
+                                        ? Duration.zero
+                                        : const Duration(milliseconds: 240),
                                     curve: Curves.easeOutCubic,
                                     builder: (context, scale, child) => Opacity(
                                       opacity: ((scale - .9) * 10).clamp(0, 1),
@@ -766,11 +784,13 @@ class _MemoTreeState extends State<MemoTree>
                   Positioned(
                     right: 8,
                     bottom: 8,
-                    child: IconButton.filledTonal(
-                      tooltip: tr(context, '전체 보기'),
-                      onPressed: () =>
-                          fitGraph(constraints.biggest, contentSize),
-                      icon: const Icon(Icons.fit_screen),
+                    child: NotebookPress(
+                      child: IconButton.filledTonal(
+                        tooltip: tr(context, '전체 보기'),
+                        onPressed: () =>
+                            fitGraph(constraints.biggest, contentSize),
+                        icon: const Icon(Icons.fit_screen),
+                      ),
                     ),
                   ),
                 ],
@@ -785,13 +805,16 @@ class _MemoTreeState extends State<MemoTree>
             runSpacing: 8,
             children: [
               if (widget.onGenerate != null)
-                OutlinedButton.icon(
-                  onPressed: widget.generating ? null : widget.onGenerate,
-                  icon: Icon(Icons.auto_awesome_outlined),
-                  label: Text(
-                    widget.generating
-                        ? tr(context, '기기에서 분석 중…')
-                        : tr(context, 'AI 과정 초안'),
+                NotebookPress(
+                  enabled: !widget.generating,
+                  child: OutlinedButton.icon(
+                    onPressed: widget.generating ? null : widget.onGenerate,
+                    icon: Icon(Icons.auto_awesome_outlined),
+                    label: Text(
+                      widget.generating
+                          ? tr(context, '기기에서 분석 중…')
+                          : tr(context, 'AI 과정 초안'),
+                    ),
                   ),
                 ),
             ],
@@ -929,23 +952,58 @@ class _BranchDialogState extends State<_BranchDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.isNew ? tr(context, '가지 추가') : tr(context, '가지 수정')),
-    content: TextField(
-      controller: controller,
-      autofocus: true,
-      maxLength: 200,
-      decoration: InputDecoration(hintText: tr(context, '생각을 적어 보세요')),
+  Widget build(BuildContext context) => Dialog(
+    insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    child: SizedBox(
+      width: 520,
+      height:
+          (MediaQuery.sizeOf(context).height -
+                  MediaQuery.viewInsetsOf(context).bottom -
+                  24)
+              .clamp(0.0, 560.0),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              widget.isNew ? tr(context, '가지 추가') : tr(context, '가지 수정'),
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: TextInputType.multiline,
+                textInputAction: TextInputAction.newline,
+                expands: true,
+                maxLines: null,
+                maxLength: 200,
+                textAlignVertical: TextAlignVertical.top,
+                decoration: InputDecoration(
+                  hintText: tr(context, '생각을 적어 보세요'),
+                ),
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(tr(context, '취소')),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: () =>
+                      Navigator.pop(context, controller.text.trim()),
+                  child: Text(tr(context, '저장')),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: Text(tr(context, '취소')),
-      ),
-      FilledButton(
-        onPressed: () => Navigator.pop(context, controller.text.trim()),
-        child: Text(tr(context, '저장')),
-      ),
-    ],
   );
 }

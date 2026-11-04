@@ -4,12 +4,15 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'store.dart';
 import 'voice.dart';
 import 'local_ai.dart';
 import 'paper_theme.dart';
+import 'notebook_motion.dart';
 import 'paper_surface.dart';
 import 'tree_preview.dart';
 import 'sketch_icons.dart';
@@ -20,8 +23,16 @@ import 'app_strings.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+void registerNotebookFontLicense() {
+  LicenseRegistry.addLicense(() async* {
+    final text = await rootBundle.loadString('licenses/Xiaolai-OFL.txt');
+    yield LicenseEntryWithLineBreaks(['Xiaolai'], text);
+  });
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  registerNotebookFontLicense();
   final store = Store();
   await store.open();
   runApp(
@@ -353,6 +364,8 @@ class _HomeState extends State<Home> {
               showSettings();
             } else if (v == 'legacy') {
               showLegacyGraph();
+            } else if (v == 'licenses') {
+              showLicensePage(context: context, applicationName: 'GONDUT');
             } else {
               showDialog<void>(
                 context: context,
@@ -383,6 +396,10 @@ class _HomeState extends State<Home> {
             ),
             PopupMenuItem(value: 'backup', child: Text(tr(context, '백업 저장'))),
             PopupMenuItem(value: 'restore', child: Text(tr(context, '백업 복원'))),
+            PopupMenuItem(
+              value: 'licenses',
+              child: Text(tr(context, '오픈소스 라이선스')),
+            ),
             if (nodes.isNotEmpty)
               PopupMenuItem(
                 value: 'legacy',
@@ -397,10 +414,12 @@ class _HomeState extends State<Home> {
       ],
     ),
     body: memoPage(),
-    floatingActionButton: FloatingActionButton.extended(
-      onPressed: () => edit(),
-      icon: SketchIcon('add'),
-      label: Text(tr(context, '새 메모')),
+    floatingActionButton: NotebookPress(
+      child: FloatingActionButton.extended(
+        onPressed: () => edit(),
+        icon: SketchIcon('add'),
+        label: Text(tr(context, '새 메모')),
+      ),
     ),
   );
 
@@ -471,48 +490,54 @@ class _HomeState extends State<Home> {
             final content = (m['title'] as String?)?.isNotEmpty == true
                 ? m['title'] as String
                 : (m['text'] as String);
-            return Material(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              shape: branchShape(
-                'rounded',
-                BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-              ),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(20),
-                onTap: () => edit(m),
-                onLongPress: () => memoOptions(m),
-                child: Padding(
-                  padding: EdgeInsets.all(18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: (memoTrees[m['id']]?.isNotEmpty ?? false)
-                            ? TreePreview(
-                                key: ValueKey('tree-preview-${m['id']}'),
-                                items: memoTrees[m['id']]!,
-                              )
-                            : Text(
-                                content.trim().isEmpty
+            return NotebookPress(
+              child: Material(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                shape: branchShape(
+                  'rounded',
+                  BorderSide(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () => edit(m),
+                  onLongPress: () => memoOptions(m),
+                  child: Padding(
+                    padding: EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: (memoTrees[m['id']]?.isNotEmpty ?? false)
+                              ? TreePreview(
+                                  key: ValueKey('tree-preview-${m['id']}'),
+                                  items: memoTrees[m['id']]!,
+                                )
+                              : Text(
+                                  content.trim().isEmpty
+                                      ? tr(context, '새 메모')
+                                      : content.trim(),
+                                  maxLines: 5,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
+                                ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          (memoTrees[m['id']]?.isNotEmpty ?? false)
+                              ? (content.trim().isEmpty
                                     ? tr(context, '새 메모')
-                                    : content.trim(),
-                                maxLines: 5,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        (memoTrees[m['id']]?.isNotEmpty ?? false)
-                            ? (content.trim().isEmpty
-                                  ? tr(context, '새 메모')
-                                  : content.trim())
-                            : tr(context, '길게 눌러 더보기'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelSmall,
-                      ),
-                    ],
+                                    : content.trim())
+                              : tr(context, '길게 눌러 더보기'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1128,27 +1153,29 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
   }
 
   Widget modeButton(String mode, IconData icon, String label, bool selected) =>
-      IconButton(
-        tooltip: tr(context, label),
-        isSelected: selected,
-        selectedIcon: SketchIcon(
-          mode == 'ink' && handwriting ? 'keyboard' : mode,
-        ),
-        icon: SketchIcon(mode == 'ink' && handwriting ? 'keyboard' : mode),
-        style: ButtonStyle(
-          backgroundColor: WidgetStateProperty.resolveWith(
-            (states) => states.contains(WidgetState.selected)
-                ? Theme.of(context).colorScheme.primaryContainer
-                : null,
+      NotebookPress(
+        child: IconButton(
+          tooltip: tr(context, label),
+          isSelected: selected,
+          selectedIcon: SketchIcon(
+            mode == 'ink' && handwriting ? 'keyboard' : mode,
           ),
-          foregroundColor: WidgetStateProperty.resolveWith(
-            (states) => states.contains(WidgetState.selected)
-                ? Theme.of(context).colorScheme.primary
-                : null,
+          icon: SketchIcon(mode == 'ink' && handwriting ? 'keyboard' : mode),
+          style: ButtonStyle(
+            backgroundColor: WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.selected)
+                  ? Theme.of(context).colorScheme.primaryContainer
+                  : null,
+            ),
+            foregroundColor: WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.selected)
+                  ? Theme.of(context).colorScheme.primary
+                  : null,
+            ),
           ),
+          onPressed: () =>
+              selectMode(mode == 'ink' && handwriting ? 'text' : mode),
         ),
-        onPressed: () =>
-            selectMode(mode == 'ink' && handwriting ? 'text' : mode),
       );
 
   String currentText() {
@@ -1342,7 +1369,12 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
                                     .paragraph!
                                     .style
                                     .copyWith(
-                                      fontFamily: 'GondutHand',
+                                      fontFamily: Theme.of(
+                                        context,
+                                      ).textTheme.bodyLarge?.fontFamily,
+                                      fontFamilyFallback: Theme.of(
+                                        context,
+                                      ).textTheme.bodyLarge?.fontFamilyFallback,
                                       fontSize: 22,
                                       height: 1.25,
                                       color: Theme.of(
@@ -1612,15 +1644,18 @@ class _VoicePageState extends State<VoicePage> {
             children: [
               Text(tr(context, status)),
               SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: busy
-                    ? null
-                    : recording
-                    ? stop
-                    : start,
-                icon: Icon(recording ? Icons.stop : Icons.mic),
-                label: Text(
-                  recording ? tr(context, '녹음 마치기') : tr(context, '녹음 시작'),
+              NotebookPress(
+                enabled: !busy,
+                child: FilledButton.icon(
+                  onPressed: busy
+                      ? null
+                      : recording
+                      ? stop
+                      : start,
+                  icon: Icon(recording ? Icons.stop : Icons.mic),
+                  label: Text(
+                    recording ? tr(context, '녹음 마치기') : tr(context, '녹음 시작'),
+                  ),
                 ),
               ),
               SizedBox(height: 24),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'store.dart';
 import 'app_strings.dart';
 import 'ink_recognition.dart';
+import 'notebook_motion.dart';
 
 /// Ink coordinates are normalized, so the drawing survives a size change.
 class HandwritingPad extends StatefulWidget {
@@ -174,25 +175,35 @@ class _HandwritingPadState extends State<HandwritingPad> {
           child: Row(
             children: [
               Expanded(child: Text(tr(context, '손가락이나 펜으로 적어 보세요'))),
-              IconButton(
-                tooltip: tr(context, '마지막 획 되돌리기'),
-                onPressed: strokes.isEmpty || recognizing
-                    ? null
-                    : () {
-                        setState(() => undoneStrokes.add(strokes.removeLast()));
-                        save();
-                      },
-                icon: Icon(Icons.undo),
+              NotebookPress(
+                enabled: strokes.isNotEmpty && !recognizing,
+                child: IconButton(
+                  tooltip: tr(context, '마지막 획 되돌리기'),
+                  onPressed: strokes.isEmpty || recognizing
+                      ? null
+                      : () {
+                          setState(
+                            () => undoneStrokes.add(strokes.removeLast()),
+                          );
+                          save();
+                        },
+                  icon: Icon(Icons.undo),
+                ),
               ),
-              IconButton(
-                tooltip: tr(context, '마지막 획 다시 실행'),
-                onPressed: undoneStrokes.isEmpty || recognizing
-                    ? null
-                    : () {
-                        setState(() => strokes.add(undoneStrokes.removeLast()));
-                        save();
-                      },
-                icon: const Icon(Icons.redo),
+              NotebookPress(
+                enabled: undoneStrokes.isNotEmpty && !recognizing,
+                child: IconButton(
+                  tooltip: tr(context, '마지막 획 다시 실행'),
+                  onPressed: undoneStrokes.isEmpty || recognizing
+                      ? null
+                      : () {
+                          setState(
+                            () => strokes.add(undoneStrokes.removeLast()),
+                          );
+                          save();
+                        },
+                  icon: const Icon(Icons.redo),
+                ),
               ),
             ],
           ),
@@ -224,9 +235,14 @@ class _HandwritingPadState extends State<HandwritingPad> {
                 ),
               ),
               const SizedBox(width: 8),
-              FilledButton.tonal(
-                onPressed: recognizing || strokes.isEmpty ? null : recognize,
-                child: Text(tr(context, recognizing ? '손글씨 인식 중…' : '글자로 변환')),
+              NotebookPress(
+                enabled: !recognizing && strokes.isNotEmpty,
+                child: FilledButton.tonal(
+                  onPressed: recognizing || strokes.isEmpty ? null : recognize,
+                  child: Text(
+                    tr(context, recognizing ? '손글씨 인식 중…' : '글자로 변환'),
+                  ),
+                ),
               ),
             ],
           ),

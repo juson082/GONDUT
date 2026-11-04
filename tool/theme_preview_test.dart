@@ -12,7 +12,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final font = File('assets/NanumPenScript-Regular.ttf').readAsBytesSync();
+    final font = File('assets/Xiaolai-Regular.ttf').readAsBytesSync();
     await (FontLoader(
       'GondutHand',
     )..addFont(Future.value(font.buffer.asByteData()))).load();

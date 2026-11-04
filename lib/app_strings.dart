@@ -15,6 +15,7 @@ String tr(BuildContext context, String korean) {
 const _english = <String, String>{
   '마이크 권한이 필요합니다': 'Microphone permission is required',
   '제목 수정': 'Edit title',
+  '오픈소스 라이선스': 'Open-source licenses',
   '노트 제목': 'Note title',
   '제목을 저장하지 못했습니다. 다시 시도해 주세요.': 'Could not save the title. Please try again.',
   '노드 모양': 'Node shape',

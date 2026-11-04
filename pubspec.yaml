@@ -27,7 +27,7 @@ flutter:
   fonts:
     - family: GondutHand
       fonts:
-        - asset: assets/NanumPenScript-Regular.ttf
+        - asset: assets/Xiaolai-Regular.ttf
   assets:
     - assets/whisper/
     - assets/llm/

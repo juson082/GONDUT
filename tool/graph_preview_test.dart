@@ -21,7 +21,7 @@ void main() {
       ..addFont(Future.value(font.buffer.asByteData()));
     await loader.load();
     final handwritten = File(
-      'assets/NanumPenScript-Regular.ttf',
+      'assets/Xiaolai-Regular.ttf',
     ).readAsBytesSync();
     await (FontLoader(
       'GondutHand',

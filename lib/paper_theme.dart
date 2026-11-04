@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'notebook_motion.dart';
 
 const themeColors = <String, (String, Color)>{
   // Keep the stored IDs so existing settings and backups remain valid.
@@ -33,6 +34,16 @@ ThemeData paperTheme(String name) {
       style?.copyWith(fontSize: (style.fontSize ?? 14) + add);
   return ThemeData(
     useMaterial3: true,
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: NotebookPageTransitions(),
+        TargetPlatform.iOS: NotebookPageTransitions(),
+        TargetPlatform.linux: NotebookPageTransitions(),
+        TargetPlatform.macOS: NotebookPageTransitions(),
+        TargetPlatform.windows: NotebookPageTransitions(),
+        TargetPlatform.fuchsia: NotebookPageTransitions(),
+      },
+    ),
     textTheme: handwriting.copyWith(
       bodySmall: larger(handwriting.bodySmall, 3),
       bodyMedium: larger(handwriting.bodyMedium, 4),

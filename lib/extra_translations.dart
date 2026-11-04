@@ -16,6 +16,11 @@ String? additionalTranslation(String code, String english) {
 
 const _translations = <String, (String, String, String)>{
   'Edit title': ('タイトルを編集', '编辑标题', 'Editar título'),
+  'Open-source licenses': (
+    'オープンソースライセンス',
+    '开源许可',
+    'Licencias de código abierto',
+  ),
   'Note title': ('ノートのタイトル', '笔记标题', 'Título de la nota'),
   'Could not save the title. Please try again.': (
     'タイトルを保存できませんでした。もう一度お試しください。',

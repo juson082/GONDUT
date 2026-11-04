@@ -172,7 +172,10 @@ void main() {
     expect(find.text('나의 기록'), findsOneWidget);
     await tester.tap(find.text('나의 기록'));
     await tester.pumpAndSettle();
-    expect(tester.widget<TextFormField>(find.byType(TextFormField)).initialValue, '나의 기록');
+    expect(
+      tester.widget<TextFormField>(find.byType(TextFormField)).initialValue,
+      '나의 기록',
+    );
   });
   testWidgets('home shows the saved tree only for the matching note', (
     tester,
@@ -429,6 +432,11 @@ void main() {
   testWidgets('tapping a branch reveals its text and editing actions', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
     final store = MemoryStore();
     store.treeItems.add({
       'id': 1,
@@ -459,10 +467,27 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('기존 생각').last);
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), '수정한 생각');
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(TextField)).width, greaterThan(300));
+    expect(tester.getSize(find.byType(TextField)).height, greaterThan(150));
+    expect(tester.getBottomRight(find.text('저장')).dy, lessThanOrEqualTo(500));
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.keyboardType, TextInputType.multiline);
+    expect(field.textInputAction, TextInputAction.newline);
+    expect(field.expands, isTrue);
+    await tester.enterText(find.byType(TextField), '수정한 생각\n두 번째 줄');
     await tester.tap(find.text('저장'));
     await tester.pumpAndSettle();
-    expect(store.treeItems.single['text'], '수정한 생각');
+    expect(store.treeItems.single['text'], '수정한 생각\n두 번째 줄');
+    await tester.tap(find.text('수정한 생각\n두 번째 줄'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('수정한 생각\n두 번째 줄').last);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      '수정한 생각\n두 번째 줄',
+    );
   });
 
   testWidgets(
@@ -601,6 +626,12 @@ void main() {
       await tester.pumpWidget(MemoApp(store));
       await tester.pumpAndSettle();
       expect(find.text('New note'), findsOneWidget);
+      expect(
+        Theme.of(
+          tester.element(find.text('New note')),
+        ).textTheme.bodyMedium?.fontFamily,
+        'GondutHand',
+      );
       await tester.tap(find.byType(PopupMenuButton<String>));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Settings · theme'));
@@ -609,6 +640,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(store.language, 'ko');
       expect(find.text('새 메모'), findsOneWidget);
+      expect(
+        Theme.of(
+          tester.element(find.text('새 메모')),
+        ).textTheme.bodyMedium?.fontFamily,
+        'GondutHand',
+      );
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpWidget(MemoApp(store, initialLanguage: store.language));
       await tester.pumpAndSettle();
@@ -636,6 +673,12 @@ void main() {
       await tester.pumpWidget(MemoApp(MemoryStore()));
       await tester.pumpAndSettle();
       expect(find.text(entry.$2), findsOneWidget);
+      expect(
+        Theme.of(
+          tester.element(find.text(entry.$2)),
+        ).textTheme.bodyMedium?.fontFamily,
+        'GondutHand',
+      );
     });
   }
 
