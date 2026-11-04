@@ -179,6 +179,7 @@ class _HomeState extends State<Home> {
           id,
           memo?['text'] as String? ?? '',
           initialRichText: memo?['rich_text'] as String?,
+          initialTitle: memo?['title'] as String?,
         ),
       ),
     );
@@ -984,11 +985,13 @@ class Editor extends StatefulWidget {
     this.initial, {
     super.key,
     this.initialRichText,
+    this.initialTitle,
   });
   final Store store;
   final int id;
   final String initial;
   final String? initialRichText;
+  final String? initialTitle;
   @override
   State<Editor> createState() => _EditorState();
 }
@@ -1004,6 +1007,46 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
   bool saveErrorShown = false;
   bool generatingProcess = false;
   int treeRevision = 0;
+  late String noteTitle = widget.initialTitle ?? '';
+
+  Future<void> editTitle() async {
+    var input = noteTitle;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr(c, '제목 수정')),
+        content: TextFormField(
+          initialValue: input,
+          autofocus: true,
+          maxLines: 1,
+          textInputAction: TextInputAction.done,
+          decoration: InputDecoration(hintText: tr(c, '노트 제목')),
+          onChanged: (value) => input = value,
+          onFieldSubmitted: (value) => Navigator.pop(c, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: Text(tr(c, '취소')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(c, input),
+            child: Text(tr(c, '저장')),
+          ),
+        ],
+      ),
+    );
+    if (result == null || !mounted) return;
+    try {
+      await widget.store.renameMemo(widget.id, result);
+      if (mounted) setState(() => noteTitle = result.trim());
+    } catch (_) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(tr(context, '제목을 저장하지 못했습니다. 다시 시도해 주세요.'))),
+        );
+    }
+  }
 
   @override
   void initState() {
@@ -1236,7 +1279,19 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
     },
     child: Scaffold(
       appBar: AppBar(
-        title: Text(tr(context, '내 노트')),
+        title: InkWell(
+          onTap: editTitle,
+          borderRadius: BorderRadius.circular(8),
+          child: Semantics(
+            button: true,
+            label: tr(context, '제목 수정'),
+            child: Text(
+              noteTitle.isEmpty ? tr(context, '내 노트') : noteTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
         actions: [
           modeButton(
             'text',

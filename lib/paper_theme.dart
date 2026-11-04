@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
 const themeColors = <String, (String, Color)>{
-  'lavender': ('라벤더', Color(0xffded3f4)),
-  'rose': ('장미', Color(0xfff4d3df)),
-  'peach': ('복숭아', Color(0xffffdfcf)),
-  'sage': ('세이지', Color(0xffd3ebdc)),
-  'sky': ('하늘', Color(0xffd3eaf7)),
-  'sand': ('샌드', Color(0xfff4e8cd)),
+  // Keep the stored IDs so existing settings and backups remain valid.
+  'lavender': ('새싹', Color(0xffdceccf)),
+  'rose': ('꽃잎', Color(0xfff1d9dc)),
+  'peach': ('햇살', Color(0xfff1e6c8)),
+  'sage': ('이끼', Color(0xffd2e2d2)),
+  'sky': ('허브', Color(0xffd2e7df)),
+  'sand': ('마른 잎', Color(0xffe9dec9)),
+  'snow': ('눈 덮인 숲', Color(0xffdceced)),
 };
 
 ThemeData paperTheme(String name) {

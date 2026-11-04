@@ -9,7 +9,7 @@ class Store {
   Future<void> open({String? path}) async {
     db = await openDatabase(
       path ?? join(await getDatabasesPath(), 'memo_graph.db'),
-      version: 8,
+      version: 9,
       onConfigure: (d) => d.execute('PRAGMA foreign_keys = ON'),
       onCreate: (d, _) async {
         await d.execute(
@@ -29,6 +29,9 @@ class Store {
         );
         await d.execute('ALTER TABLE memos ADD COLUMN rich_text TEXT');
         await d.execute('ALTER TABLE memos ADD COLUMN ink TEXT');
+        await d.execute(
+          'ALTER TABLE memos ADD COLUMN title_manual INTEGER NOT NULL DEFAULT 0',
+        );
         await _createBranches(d);
       },
       onUpgrade: (d, oldVersion, newVersion) async {
@@ -61,6 +64,11 @@ class Store {
         if (oldVersion >= 5 && oldVersion < 8) {
           await d.execute(
             "ALTER TABLE memo_branches ADD COLUMN shape TEXT NOT NULL DEFAULT 'rounded'",
+          );
+        }
+        if (oldVersion < 9) {
+          await d.execute(
+            'ALTER TABLE memos ADD COLUMN title_manual INTEGER NOT NULL DEFAULT 0',
           );
         }
       },
@@ -168,7 +176,7 @@ class Store {
 
   Future<void> saveRichMemo(int id, String text, String richText) async {
     await db.rawUpdate(
-      'UPDATE memos SET text=?, rich_text=?, updated=?, title=CASE WHEN title IS NOT NULL AND instr(?, title)>0 THEN title ELSE NULL END WHERE id=?',
+      'UPDATE memos SET text=?, rich_text=?, updated=?, title=CASE WHEN title_manual=1 OR (title IS NOT NULL AND instr(?, title)>0) THEN title ELSE NULL END WHERE id=?',
       [text, richText, DateTime.now().millisecondsSinceEpoch, text, id],
     );
   }
@@ -254,8 +262,8 @@ class Store {
   }
 
   Future<List<Map<String, Object?>>> memos([String query = '']) => db.rawQuery(
-    'SELECT m.*, (SELECT COUNT(*) FROM nodes n WHERE n.memo_id=m.id) AS node_count FROM memos m WHERE m.text LIKE ? ORDER BY m.updated DESC',
-    ['%$query%'],
+    'SELECT m.*, (SELECT COUNT(*) FROM nodes n WHERE n.memo_id=m.id) AS node_count FROM memos m WHERE m.text LIKE ? OR m.title LIKE ? ORDER BY m.updated DESC',
+    ['%$query%', '%$query%'],
   );
   Future<List<Map<String, Object?>>> nodes() => db.rawQuery(
     'SELECT n.*, m.text, m.color FROM nodes n JOIN memos m ON m.id=n.memo_id ORDER BY n.id',
@@ -277,9 +285,24 @@ class Store {
   });
   Future<void> saveMemo(int id, String text) async {
     await db.rawUpdate(
-      'UPDATE memos SET text=?, updated=?, title=CASE WHEN title IS NOT NULL AND instr(?, title)>0 THEN title ELSE NULL END WHERE id=?',
+      'UPDATE memos SET text=?, updated=?, title=CASE WHEN title_manual=1 OR (title IS NOT NULL AND instr(?, title)>0) THEN title ELSE NULL END WHERE id=?',
       [text, DateTime.now().millisecondsSinceEpoch, text, id],
     );
+  }
+
+  Future<void> renameMemo(int id, String title) async {
+    final value = title.trim();
+    final count = await db.update(
+      'memos',
+      {
+        'title': value.isEmpty ? null : value,
+        'title_manual': value.isEmpty ? 0 : 1,
+        'updated': DateTime.now().millisecondsSinceEpoch,
+      },
+      where: 'id=?',
+      whereArgs: [id],
+    );
+    if (count != 1) throw StateError('Memo not found');
   }
 
   Future<void> saveGeneratedTitle(int id, String source, String? title) async {
@@ -287,7 +310,8 @@ class Store {
     await db.update(
       'memos',
       {'title': title},
-      where: 'id=? AND text=? AND (title IS NULL OR title=?)',
+      where:
+          'id=? AND text=? AND title_manual=0 AND (title IS NULL OR title=?)',
       whereArgs: [id, source, ''],
     );
   }
@@ -360,7 +384,7 @@ class Store {
 
   Future<String> backup() => db.transaction(
     (tx) async => jsonEncode({
-      'version': 8,
+      'version': 9,
       'memos': await tx.query('memos'),
       'nodes': await tx.query('nodes'),
       'edges': await tx.query('edges'),
@@ -720,7 +744,8 @@ class Store {
             decoded['version'] != 5 &&
             decoded['version'] != 6 &&
             decoded['version'] != 7 &&
-            decoded['version'] != 8) ||
+            decoded['version'] != 8 &&
+            decoded['version'] != 9) ||
         decoded['memos'] is! List ||
         decoded['nodes'] is! List ||
         decoded['edges'] is! List) {

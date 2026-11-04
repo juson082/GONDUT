@@ -23,7 +23,7 @@ void main() {
         },
         onCreate: (db, version) async {
           await db.execute(
-            'CREATE TABLE memos(id INTEGER PRIMARY KEY, text TEXT NOT NULL, updated INTEGER NOT NULL, title TEXT, color INTEGER NOT NULL DEFAULT 4294960081, rich_text TEXT, ink TEXT)',
+            'CREATE TABLE memos(id INTEGER PRIMARY KEY, text TEXT NOT NULL, updated INTEGER NOT NULL, title TEXT, color INTEGER NOT NULL DEFAULT 4294960081, rich_text TEXT, ink TEXT, title_manual INTEGER NOT NULL DEFAULT 0)',
           );
           await db.execute(
             'CREATE TABLE nodes(id INTEGER PRIMARY KEY, memo_id INTEGER NOT NULL REFERENCES memos(id) ON DELETE CASCADE, x REAL NOT NULL, y REAL NOT NULL)',
@@ -46,6 +46,27 @@ void main() {
     );
   });
   tearDown(() async => store.db.close());
+
+  test(
+    'manual titles survive edits, generated titles and backup restore',
+    () async {
+      final id = await store.addMemo('first text');
+      await store.renameMemo(id, 'My own title');
+      await store.saveRichMemo(id, 'new text', '[]');
+      await store.saveGeneratedTitle(id, 'new text', 'new text');
+      expect(
+        (await store.memos('My own title')).single['title'],
+        'My own title',
+      );
+      final backup = await store.backup();
+      await store.restore(backup);
+      await store.saveMemo(id, 'another text');
+      expect((await store.memos()).single['title'], 'My own title');
+      await store.renameMemo(id, '');
+      await store.saveGeneratedTitle(id, 'another text', 'another text');
+      expect((await store.memos()).single['title'], 'another text');
+    },
+  );
 
   test(
     'freezing initial positions never moves manually placed nodes',

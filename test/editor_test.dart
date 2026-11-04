@@ -13,6 +13,7 @@ class MemoryStore extends Store {
   String value = '';
   String? savedRichText;
   String? savedInk;
+  String? savedTitle;
   String theme = 'lavender';
   String language = 'system';
   final List<Map<String, Object?>> treeItems = [];
@@ -103,6 +104,11 @@ class MemoryStore extends Store {
   }
 
   @override
+  Future<void> renameMemo(int id, String title) async {
+    savedTitle = title.trim();
+  }
+
+  @override
   Future<void> saveRichMemo(int id, String text, String richText) async {
     value = text;
     savedRichText = richText;
@@ -138,6 +144,35 @@ void main() {
   tearDown(() {
     TestWidgetsFlutterBinding.ensureInitialized().platformDispatcher
         .clearLocalesTestValue();
+  });
+  testWidgets('tapping the note title edits it and displays the saved title', (
+    tester,
+  ) async {
+    final store = MemoryStore();
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('ko'),
+        supportedLocales: const [Locale('ko')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          quill.FlutterQuillLocalizations.delegate,
+        ],
+        home: Editor(store, 1, 'body'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('내 노트'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), '나의 기록');
+    await tester.tap(find.text('저장'));
+    await tester.pumpAndSettle();
+    expect(store.savedTitle, '나의 기록');
+    expect(find.text('나의 기록'), findsOneWidget);
+    await tester.tap(find.text('나의 기록'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextFormField>(find.byType(TextFormField)).initialValue, '나의 기록');
   });
   testWidgets('home shows the saved tree only for the matching note', (
     tester,
@@ -538,8 +573,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('설정 · 테마'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('세이지'));
-    await tester.tap(find.text('세이지'));
+    await tester.ensureVisible(find.text('이끼'));
+    await tester.tap(find.text('이끼'));
     await tester.pumpAndSettle();
     expect(store.theme, 'sage');
     final updated = Theme.of(tester.element(find.byType(Scaffold).first));

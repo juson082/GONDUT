@@ -14,6 +14,9 @@ String tr(BuildContext context, String korean) {
 
 const _english = <String, String>{
   '마이크 권한이 필요합니다': 'Microphone permission is required',
+  '제목 수정': 'Edit title',
+  '노트 제목': 'Note title',
+  '제목을 저장하지 못했습니다. 다시 시도해 주세요.': 'Could not save the title. Please try again.',
   '노드 모양': 'Node shape',
   '둥근 사각형': 'Rounded rectangle',
   '알약': 'Pill',
@@ -63,6 +66,13 @@ const _english = <String, String>{
   '설정': 'Settings',
   '앱 테마': 'App theme',
   '마음에 드는 색을 골라 보세요.': 'Choose a color you like.',
+  '새싹': 'Sprout',
+  '꽃잎': 'Petal',
+  '햇살': 'Sunlight',
+  '이끼': 'Moss',
+  '허브': 'Herb',
+  '마른 잎': 'Fallen leaf',
+  '눈 덮인 숲': 'Snowy forest',
   '라벤더': 'Lavender',
   '장미': 'Rose',
   '복숭아': 'Peach',

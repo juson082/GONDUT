@@ -15,6 +15,20 @@ String? additionalTranslation(String code, String english) {
 }
 
 const _translations = <String, (String, String, String)>{
+  'Edit title': ('タイトルを編集', '编辑标题', 'Editar título'),
+  'Note title': ('ノートのタイトル', '笔记标题', 'Título de la nota'),
+  'Could not save the title. Please try again.': (
+    'タイトルを保存できませんでした。もう一度お試しください。',
+    '无法保存标题，请重试。',
+    'No se pudo guardar el título. Inténtalo de nuevo.',
+  ),
+  'Sprout': ('芽吹き', '新芽', 'Brote'),
+  'Petal': ('花びら', '花瓣', 'Pétalo'),
+  'Sunlight': ('ひだまり', '阳光', 'Luz de sol'),
+  'Moss': ('苔', '苔藓', 'Musgo'),
+  'Herb': ('ハーブ', '香草', 'Hierba'),
+  'Fallen leaf': ('落ち葉', '落叶', 'Hoja caída'),
+  'Snowy forest': ('雪の森', '雪林', 'Bosque nevado'),
   'Microphone permission is required': (
     'マイクの使用許可が必要です',
     '需要麦克风权限',
