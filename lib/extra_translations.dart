@@ -15,6 +15,17 @@ String? additionalTranslation(String code, String english) {
 }
 
 const _translations = <String, (String, String, String)>{
+  'AI tree': ('AIツリー', 'AI 树图', 'Árbol con IA'),
+  'Create an AI tree from selection': (
+    '選択した内容からAIツリーを作成',
+    '用所选内容创建 AI 树图',
+    'Crear árbol con IA a partir de la selección',
+  ),
+  'Select the text you want to turn into a tree first.': (
+    '先にツリーにしたい文章を選択してください。',
+    '请先选择要生成树图的文字。',
+    'Selecciona primero el texto que quieres convertir en árbol.',
+  ),
   'Edit title': ('タイトルを編集', '编辑标题', 'Editar título'),
   'Open-source licenses': (
     'オープンソースライセンス',

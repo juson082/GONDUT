@@ -8,17 +8,9 @@ import 'notebook_motion.dart';
 
 /// A tree belongs to one memo; it never links separate memos together.
 class MemoTree extends StatefulWidget {
-  const MemoTree({
-    super.key,
-    required this.store,
-    required this.memoId,
-    this.onGenerate,
-    this.generating = false,
-  });
+  const MemoTree({super.key, required this.store, required this.memoId});
   final Store store;
   final int memoId;
-  final VoidCallback? onGenerate;
-  final bool generating;
   @override
   State<MemoTree> createState() => _MemoTreeState();
 }
@@ -34,6 +26,7 @@ class _MemoTreeState extends State<MemoTree>
   Offset? dragOrigin;
   Offset? dragPosition;
   Offset? doubleTapPosition;
+  Size graphViewport = Size.zero;
   static const rootPosition = Offset(2800, 2800);
 
   Set<int> descendants(int id) {
@@ -133,7 +126,7 @@ class _MemoTreeState extends State<MemoTree>
     duration: const Duration(milliseconds: 300),
   );
   Animation<Matrix4>? fitTween;
-  void fitGraph(Size viewport, Size content) {
+  void fitGraph(Size viewport) {
     final values = visiblePositions.values;
     if (values.isEmpty) return;
     final left = values.map((p) => p.dx).reduce(math.min) - 35;
@@ -638,21 +631,14 @@ class _MemoTreeState extends State<MemoTree>
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
+              graphViewport = constraints.biggest;
               final displayPositions = positions;
               if (!fittedInitially) {
                 fittedInitially = true;
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted)
-                    fitGraph(
-                      constraints.biggest,
-                      const Size(canvasWidth, canvasHeight),
-                    );
+                  if (mounted) fitGraph(constraints.biggest);
                 });
               }
-              final contentSize = Size(
-                math.max(canvasWidth, constraints.maxWidth),
-                math.max(canvasHeight, constraints.maxHeight),
-              );
               return Stack(
                 children: [
                   Positioned.fill(
@@ -781,45 +767,28 @@ class _MemoTreeState extends State<MemoTree>
                         ),
                       ),
                     ),
-                  Positioned(
-                    right: 8,
-                    bottom: 8,
-                    child: NotebookPress(
-                      child: IconButton.filledTonal(
-                        tooltip: tr(context, '전체 보기'),
-                        onPressed: () =>
-                            fitGraph(constraints.biggest, contentSize),
-                        icon: const Icon(Icons.fit_screen),
-                      ),
-                    ),
-                  ),
                 ],
               );
             },
           ),
         ),
-        Padding(
-          padding: EdgeInsets.fromLTRB(16, 4, 16, 16),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (widget.onGenerate != null)
-                NotebookPress(
-                  enabled: !widget.generating,
-                  child: OutlinedButton.icon(
-                    onPressed: widget.generating ? null : widget.onGenerate,
-                    icon: Icon(Icons.auto_awesome_outlined),
-                    label: Text(
-                      widget.generating
-                          ? tr(context, '기기에서 분석 중…')
-                          : tr(context, 'AI 과정 초안'),
-                    ),
+        if (items.isNotEmpty)
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: NotebookPress(
+                child: Tooltip(
+                  message: tr(context, '전체 보기'),
+                  child: TextButton.icon(
+                    onPressed: () => fitGraph(graphViewport),
+                    icon: const Icon(Icons.fit_screen),
+                    label: Text(tr(context, '전체 보기')),
                   ),
                 ),
-            ],
+              ),
+            ),
           ),
-        ),
       ],
     );
   }

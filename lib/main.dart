@@ -1021,8 +1021,25 @@ class Editor extends StatefulWidget {
   State<Editor> createState() => _EditorState();
 }
 
+@visibleForTesting
+String? selectedNoteText(String source, TextSelection selection) {
+  if (!selection.isValid ||
+      selection.isCollapsed ||
+      selection.start < 0 ||
+      selection.end > source.length + 1)
+    return null;
+  // Quill includes a final document newline that is not part of saved text.
+  final start = selection.start.clamp(0, source.length);
+  final end = selection.end.clamp(0, source.length);
+  if (start >= end) return null;
+  final selected = source.substring(start, end);
+  return selected.trim().isEmpty ? null : selected;
+}
+
 class _EditorState extends State<Editor> with WidgetsBindingObserver {
   late quill.QuillController controller;
+  final FocusNode editorFocus = FocusNode();
+  final ScrollController editorScroll = ScrollController();
   Timer? timer;
   Future<void> pending = Future.value();
   bool leaving = false;
@@ -1032,7 +1049,50 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
   bool saveErrorShown = false;
   bool generatingProcess = false;
   int treeRevision = 0;
+  OverlayEntry? noticeOverlay;
+  Timer? noticeTimer;
   late String noteTitle = widget.initialTitle ?? '';
+
+  void showEditorNotice(String message) {
+    noticeTimer?.cancel();
+    noticeOverlay?.remove();
+    noticeOverlay?.dispose();
+    final scheme = Theme.of(context).colorScheme;
+    final top = MediaQuery.paddingOf(context).top + 8;
+    noticeOverlay = OverlayEntry(
+      builder: (_) => Positioned(
+        left: 20,
+        right: 20,
+        top: top,
+        child: IgnorePointer(
+          child: Semantics(
+            liveRegion: true,
+            child: Material(
+              elevation: 3,
+              color: scheme.inverseSurface,
+              borderRadius: BorderRadius.circular(14),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Text(
+                  message,
+                  style: TextStyle(color: scheme.onInverseSurface),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    Overlay.of(context, rootOverlay: true).insert(noticeOverlay!);
+    noticeTimer = Timer(const Duration(seconds: 3), () {
+      noticeOverlay?.remove();
+      noticeOverlay?.dispose();
+      noticeOverlay = null;
+    });
+  }
 
   Future<void> editTitle() async {
     var input = noteTitle;
@@ -1183,6 +1243,20 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
     return plain.endsWith('\n') ? plain.substring(0, plain.length - 1) : plain;
   }
 
+  void generateSelectedProcessDraft() {
+    final source = currentText();
+    if (source.trim().isEmpty) {
+      showEditorNotice(tr(context, '먼저 메모에 내용을 적어 주세요.'));
+      return;
+    }
+    final selected = selectedNoteText(source, controller.selection);
+    if (selected == null) {
+      showEditorNotice(tr(context, '먼저 그래프로 만들 부분을 선택해 주세요.'));
+      return;
+    }
+    generateProcessDraft(analysisSource: selected);
+  }
+
   Future<void> useHandwritingText(String text, bool createGraph) async {
     if (invalidDocument) throw StateError('Invalid note');
     final existing = currentText();
@@ -1214,9 +1288,7 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
     if (generatingProcess || invalidDocument) return;
     final source = currentText();
     if (source.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(tr(context, '먼저 메모에 내용을 적어 주세요.'))),
-      );
+      showEditorNotice(tr(context, '먼저 메모에 내용을 적어 주세요.'));
       return;
     }
     setState(() => generatingProcess = true);
@@ -1229,12 +1301,8 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
       if (!mounted) return;
       if (currentText() != source) throw StateError('메모가 변경되었습니다. 다시 시도해 주세요.');
       if (analysis.items.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              tr(context, '원문에서 확인할 수 있는 과정 후보를 찾지 못했습니다. 직접 가지를 추가할 수 있습니다.'),
-            ),
-          ),
+        showEditorNotice(
+          tr(context, '원문에서 확인할 수 있는 과정 후보를 찾지 못했습니다. 직접 가지를 추가할 수 있습니다.'),
         );
         return;
       }
@@ -1245,6 +1313,7 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
             store: widget.store,
             memoId: widget.id,
             source: source,
+            displaySource: analysisSource ?? source,
             items: analysis.items,
           ),
         ),
@@ -1254,22 +1323,14 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
           tree = true;
           treeRevision++;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(tr(context, '확인한 초안을 나무에 추가했습니다. 자유롭게 수정할 수 있습니다.')),
-          ),
-        );
+        showEditorNotice(tr(context, '확인한 초안을 나무에 추가했습니다. 자유롭게 수정할 수 있습니다.'));
       }
     } catch (_) {
       if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              tr(
-                context,
-                'AI 초안을 만들지 못했습니다. 원문과 기존 가지는 보관됩니다. 메모가 길거나 변경되었는지도 확인해 주세요.',
-              ),
-            ),
+        showEditorNotice(
+          tr(
+            context,
+            'AI 초안을 만들지 못했습니다. 원문과 기존 가지는 보관됩니다. 메모가 길거나 변경되었는지도 확인해 주세요.',
           ),
         );
     } finally {
@@ -1280,9 +1341,14 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    noticeTimer?.cancel();
+    noticeOverlay?.remove();
+    noticeOverlay?.dispose();
     timer?.cancel();
     controller.removeListener(scheduleSave);
     controller.dispose();
+    editorFocus.dispose();
+    editorScroll.dispose();
     super.dispose();
   }
 
@@ -1346,8 +1412,6 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
                       key: ValueKey(treeRevision),
                       store: widget.store,
                       memoId: widget.id,
-                      onGenerate: generateProcessDraft,
-                      generating: generatingProcess,
                     )
                   : handwriting
                   ? HandwritingPad(
@@ -1357,6 +1421,8 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
                     )
                   : quill.QuillEditor.basic(
                       controller: controller,
+                      focusNode: editorFocus,
+                      scrollController: editorScroll,
                       config: quill.QuillEditorConfig(
                         padding: EdgeInsets.all(22),
                         placeholder: tr(context, '생각을 적어 보세요'),
@@ -1403,34 +1469,63 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
                   ),
                   if (!tree && !handwriting && !invalidDocument)
                     Expanded(
-                      child: quill.QuillSimpleToolbar(
-                        controller: controller,
-                        config: quill.QuillSimpleToolbarConfig(
-                          multiRowsDisplay: false,
-                          showFontFamily: true,
-                          showFontSize: true,
-                          showBoldButton: true,
-                          showItalicButton: true,
-                          showUnderLineButton: true,
-                          showStrikeThrough: true,
-                          showInlineCode: false,
-                          showColorButton: true,
-                          showBackgroundColorButton: true,
-                          showClearFormat: true,
-                          showAlignmentButtons: true,
-                          showHeaderStyle: true,
-                          showListNumbers: true,
-                          showListBullets: true,
-                          showListCheck: true,
-                          showCodeBlock: false,
-                          showQuote: true,
-                          showIndent: true,
-                          showLink: true,
-                          showUndo: true,
-                          showRedo: true,
-                          showSearchButton: true,
-                          showSubscript: false,
-                          showSuperscript: false,
+                      child: TextFieldTapRegion(
+                        child: quill.QuillSimpleToolbar(
+                          controller: controller,
+                          config: quill.QuillSimpleToolbarConfig(
+                            multiRowsDisplay: false,
+                            showFontFamily: true,
+                            showFontSize: true,
+                            showBoldButton: true,
+                            showItalicButton: true,
+                            showUnderLineButton: true,
+                            showStrikeThrough: true,
+                            showInlineCode: false,
+                            showColorButton: true,
+                            showBackgroundColorButton: true,
+                            showClearFormat: true,
+                            showAlignmentButtons: true,
+                            showHeaderStyle: true,
+                            showListNumbers: true,
+                            showListBullets: true,
+                            showListCheck: true,
+                            showCodeBlock: false,
+                            showQuote: true,
+                            showIndent: true,
+                            showLink: true,
+                            showUndo: true,
+                            showRedo: true,
+                            showSearchButton: true,
+                            showSubscript: false,
+                            showSuperscript: false,
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (!tree && !handwriting && !invalidDocument)
+                    TextFieldTapRegion(
+                      child: NotebookPress(
+                        enabled: !generatingProcess,
+                        child: Tooltip(
+                          message: tr(context, '선택한 내용으로 AI 그래프 만들기'),
+                          child: TextButton.icon(
+                            onPressed: generatingProcess
+                                ? null
+                                : generateSelectedProcessDraft,
+                            icon: generatingProcess
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.auto_awesome_outlined,
+                                    size: 20,
+                                  ),
+                            label: Text(tr(context, 'AI 그래프')),
+                          ),
                         ),
                       ),
                     ),

@@ -14,6 +14,10 @@ String tr(BuildContext context, String korean) {
 
 const _english = <String, String>{
   '마이크 권한이 필요합니다': 'Microphone permission is required',
+  'AI 그래프': 'AI tree',
+  '선택한 내용으로 AI 그래프 만들기': 'Create an AI tree from selection',
+  '먼저 그래프로 만들 부분을 선택해 주세요.':
+      'Select the text you want to turn into a tree first.',
   '제목 수정': 'Edit title',
   '오픈소스 라이선스': 'Open-source licenses',
   '노트 제목': 'Note title',
