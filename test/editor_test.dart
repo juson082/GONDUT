@@ -6,6 +6,7 @@ import 'package:memo_graph/store.dart';
 import 'package:memo_graph/paper_theme.dart';
 import 'package:memo_graph/memo_tree.dart';
 import 'package:memo_graph/tree_preview.dart';
+import 'package:memo_graph/garden_person.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -16,6 +17,14 @@ class MemoryStore extends Store {
   String? savedTitle;
   String theme = 'lavender';
   String language = 'system';
+  bool showCharacters = true;
+  @override
+  Future<bool> charactersEnabled() async => showCharacters;
+  @override
+  Future<void> setCharactersEnabled(bool enabled) async {
+    showCharacters = enabled;
+  }
+
   final List<Map<String, Object?>> treeItems = [];
   @override
   Future<List<Map<String, Object?>>> memos([String query = '']) async => [];
@@ -150,6 +159,29 @@ class SelectedDraftStore extends MemoryStore {
 }
 
 void main() {
+  testWidgets('tree displays little people only when enabled', (tester) async {
+    final store = MemoryStore();
+    store.treeItems.add({
+      'id': 1,
+      'memo_id': 1,
+      'parent_id': null,
+      'text': '생각',
+      'position': 1,
+    });
+    Widget tree(Key key) => MaterialApp(
+      home: Scaffold(
+        body: MemoTree(key: key, store: store, memoId: 1),
+      ),
+    );
+    await tester.pumpWidget(tree(const ValueKey('on')));
+    await tester.pumpAndSettle();
+    expect(find.byType(GardenPerson), findsOneWidget);
+    store.showCharacters = false;
+    await tester.pumpWidget(tree(const ValueKey('off')));
+    await tester.pumpAndSettle();
+    expect(find.byType(GardenPerson), findsNothing);
+    expect(store.treeItems.single['text'], '생각');
+  });
   setUp(() {
     TestWidgetsFlutterBinding.ensureInitialized()
         .platformDispatcher
@@ -681,7 +713,9 @@ void main() {
         tester.getCenter(find.byKey(const ValueKey('handwriting-canvas'))),
         const Offset(35, 25),
       );
+      await tester.pump(const Duration(milliseconds: 1700));
       await tester.pumpAndSettle();
+      expect(find.text('인식된 문장'), findsOneWidget);
       final ink = store.savedInk;
       await tester.tap(find.text('글자로 변환'));
       await tester.pumpAndSettle();

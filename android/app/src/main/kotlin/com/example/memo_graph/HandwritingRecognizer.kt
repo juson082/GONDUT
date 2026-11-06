@@ -20,9 +20,15 @@ import kotlin.math.min
 class HandwritingRecognizer(private val context: Context) {
     private val env = OrtEnvironment.getEnvironment()
     private val width = 1024
-    private val height = 1400
+    private var height = 1400
+    private val sessions = mutableMapOf<String, OrtSession>()
+    private val dictionaries = mutableMapOf<String, List<String>>()
 
-    fun recognize(language: String, raw: List<List<List<Double>>>): String {
+    fun close() { sessions.values.forEach { it.close() }; sessions.clear() }
+
+    fun recognize(language: String, raw: List<List<List<Double>>>, aspectRatio: Double): String {
+        require(aspectRatio.isFinite() && aspectRatio > 0.0)
+        height = (width / aspectRatio).toInt().coerceIn(256, 4096)
         val modelName = when (language) {
             "ko" -> "korean"
             "ja", "zh" -> "chinese"
@@ -53,15 +59,17 @@ class HandwritingRecognizer(private val context: Context) {
             val lines = lineBounds(bitmap)
             if (lines.isEmpty()) return ""
             val model = installAsset(modelName, "rec.onnx")
-            val dictionary = context.assets.open("flutter_assets/assets/handwriting/$modelName/dict.txt")
-                .bufferedReader(Charsets.UTF_8).use { it.readLines() }
-            val options = OrtSession.SessionOptions()
-            options.setIntraOpNumThreads(2)
-            options.use {
-                env.createSession(model.absolutePath, options).use { session ->
-                    return lines.joinToString("\n") { line -> recognizeLine(bitmap, line, session, dictionary) }.trim()
+            val dictionary = dictionaries.getOrPut(modelName) {
+                context.assets.open("flutter_assets/assets/handwriting/$modelName/dict.txt")
+                    .bufferedReader(Charsets.UTF_8).use { it.readLines() }
+            }
+            val session = sessions.getOrPut(modelName) {
+                OrtSession.SessionOptions().use { options ->
+                    options.setIntraOpNumThreads(2)
+                    env.createSession(model.absolutePath, options)
                 }
             }
+            return lines.joinToString("\n") { line -> recognizeLine(bitmap, line, session, dictionary) }.trim()
         } finally { bitmap.recycle() }
     }
 

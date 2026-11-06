@@ -5,6 +5,7 @@ import 'app_strings.dart';
 import 'plant_layout.dart';
 import 'plant_lines.dart';
 import 'notebook_motion.dart';
+import 'garden_person.dart';
 
 /// A tree belongs to one memo; it never links separate memos together.
 class MemoTree extends StatefulWidget {
@@ -129,10 +130,18 @@ class _MemoTreeState extends State<MemoTree>
   void fitGraph(Size viewport) {
     final values = visiblePositions.values;
     if (values.isEmpty) return;
-    final left = values.map((p) => p.dx).reduce(math.min) - 35;
-    final top = values.map((p) => p.dy).reduce(math.min) - 35;
-    final right = values.map((p) => p.dx + 174).reduce(math.max) + 35;
-    final bottom = values.map((p) => p.dy + 86).reduce(math.max) + 35;
+    var left = values.map((p) => p.dx).reduce(math.min) - 35;
+    var top = values.map((p) => p.dy).reduce(math.min) - 35;
+    var right = values.map((p) => p.dx + 174).reduce(math.max) + 35;
+    var bottom = values.map((p) => p.dy + 86).reduce(math.max) + 35;
+    if (showCharacters) {
+      for (final p in _characterPositions(visiblePositions)) {
+        left = math.min(left, p.dx - 20);
+        top = math.min(top, p.dy - 20);
+        right = math.max(right, p.dx + 92);
+        bottom = math.max(bottom, p.dy + 143);
+      }
+    }
     final scale =
         math
             .min(
@@ -162,6 +171,7 @@ class _MemoTreeState extends State<MemoTree>
   }
 
   bool loading = true;
+  bool showCharacters = true;
   @override
   void initState() {
     super.initState();
@@ -179,6 +189,7 @@ class _MemoTreeState extends State<MemoTree>
   }
 
   Future<void> load() async {
+    final enabled = await widget.store.charactersEnabled();
     var next = await widget.store.branches(widget.memoId);
     if (next.any((row) => row['x'] is! num || row['y'] is! num)) {
       final positions = placePlantNodes(
@@ -200,6 +211,7 @@ class _MemoTreeState extends State<MemoTree>
     if (mounted)
       setState(() {
         items = next;
+        showCharacters = enabled;
         loading = false;
       });
   }
@@ -684,6 +696,18 @@ class _MemoTreeState extends State<MemoTree>
                                 },
                               ),
                             ),
+                            if (showCharacters && draggingId == null)
+                              for (final entry in _characterPositions(
+                                displayPositions,
+                              ).indexed)
+                                Positioned(
+                                  left: entry.$2.dx,
+                                  top: entry.$2.dy,
+                                  child: GardenPerson(
+                                    key: ValueKey('garden-person-${entry.$1}'),
+                                    index: entry.$1,
+                                  ),
+                                ),
                             if (displayPositions.containsKey(0))
                               Positioned(
                                 left: displayPositions[0]!.dx,
@@ -791,6 +815,36 @@ class _MemoTreeState extends State<MemoTree>
           ),
       ],
     );
+  }
+
+  List<Offset> _characterPositions(Map<int, Offset> positions) {
+    if (items.isEmpty) return [];
+    final count = (1 + (items.length - 1) ~/ 3).clamp(1, 5);
+    final occupied = positions.values
+        .map((p) => Rect.fromLTWH(p.dx - 8, p.dy - 8, 190, 102))
+        .toList();
+    final result = <Offset>[];
+    for (final item in items) {
+      final origin = positions[item['id']];
+      if (origin == null) continue;
+      for (final offset in const [
+        Offset(185, -110),
+        Offset(-82, -110),
+        Offset(185, 92),
+        Offset(-82, 92),
+      ]) {
+        final p = origin + offset;
+        final rect = Rect.fromLTWH(p.dx, p.dy, 72, 123);
+        if (p.dx < 0 || p.dy < 0 || p.dx + 72 > 6000 || p.dy + 123 > 6000)
+          continue;
+        if (occupied.any((other) => other.overlaps(rect))) continue;
+        occupied.add(rect.inflate(8));
+        result.add(p);
+        break;
+      }
+      if (result.length == count) break;
+    }
+    return result;
   }
 }
 

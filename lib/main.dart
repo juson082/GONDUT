@@ -255,65 +255,83 @@ class _HomeState extends State<Home> {
   }
 
   Future<void> showSettings() async {
+    var showCharacters = await widget.store.charactersEnabled();
+    if (!mounted) return;
     final selected = await showDialog<String>(
       context: context,
-      builder: (c) => AlertDialog(
-        title: Text(tr(context, '설정')),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                tr(context, '언어'),
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              for (final option in <(String, String)>[
-                ('system', tr(context, '기기 설정 따르기')),
-                ('ko', '한국어'),
-                ('en', 'English'),
-                ('ja', '日本語'),
-                ('zh', '中文（简体）'),
-                ('es', 'Español'),
-              ])
-                ListTile(
+      builder: (c) => StatefulBuilder(
+        builder: (c, updateDialog) => AlertDialog(
+          title: Text(tr(context, '설정')),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(option.$2),
-                  trailing: widget.languageName == option.$1
-                      ? Icon(Icons.check)
-                      : null,
-                  onTap: () => Navigator.pop(c, 'language:${option.$1}'),
+                  title: Text(tr(context, '소인 캐릭터 표시')),
+                  value: showCharacters,
+                  onChanged: (value) async {
+                    try {
+                      await widget.store.setCharactersEnabled(value);
+                      if (c.mounted) updateDialog(() => showCharacters = value);
+                    } catch (_) {
+                      message(tr(context, '캐릭터 설정을 저장하지 못했습니다.'));
+                    }
+                  },
                 ),
-              Divider(),
-              Text(
-                tr(context, '앱 테마'),
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 6),
-              Text(tr(context, '마음에 드는 색을 골라 보세요.')),
-              SizedBox(height: 12),
-              for (final entry in themeColors.entries)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    backgroundColor: entry.value.$2,
-                    radius: 15,
+                Divider(),
+                Text(
+                  tr(context, '언어'),
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                for (final option in <(String, String)>[
+                  ('system', tr(context, '기기 설정 따르기')),
+                  ('ko', '한국어'),
+                  ('en', 'English'),
+                  ('ja', '日本語'),
+                  ('zh', '中文（简体）'),
+                  ('es', 'Español'),
+                ])
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(option.$2),
+                    trailing: widget.languageName == option.$1
+                        ? Icon(Icons.check)
+                        : null,
+                    onTap: () => Navigator.pop(c, 'language:${option.$1}'),
                   ),
-                  title: Text(tr(context, entry.value.$1)),
-                  trailing: widget.themeName == entry.key
-                      ? Icon(Icons.check)
-                      : null,
-                  onTap: () => Navigator.pop(c, entry.key),
+                Divider(),
+                Text(
+                  tr(context, '앱 테마'),
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-            ],
+                SizedBox(height: 6),
+                Text(tr(context, '마음에 드는 색을 골라 보세요.')),
+                SizedBox(height: 12),
+                for (final entry in themeColors.entries)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: entry.value.$2,
+                      radius: 15,
+                    ),
+                    title: Text(tr(context, entry.value.$1)),
+                    trailing: widget.themeName == entry.key
+                        ? Icon(Icons.check)
+                        : null,
+                    onTap: () => Navigator.pop(c, entry.key),
+                  ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c),
+              child: Text(tr(context, '닫기')),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: Text(tr(context, '닫기')),
-          ),
-        ],
       ),
     );
     if (selected != null && selected.startsWith('language:')) {

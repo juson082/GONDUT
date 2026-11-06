@@ -13,6 +13,9 @@ String tr(BuildContext context, String korean) {
 }
 
 const _english = <String, String>{
+  '소인 캐릭터 표시': 'Show little people',
+  '소인 캐릭터': 'Little person',
+  '캐릭터 설정을 저장하지 못했습니다.': 'Could not save the character setting.',
   '마이크 권한이 필요합니다': 'Microphone permission is required',
   'AI 그래프': 'AI tree',
   '선택한 내용으로 AI 그래프 만들기': 'Create an AI tree from selection',

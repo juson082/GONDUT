@@ -329,6 +329,22 @@ class Store {
     return rows.isEmpty ? 'lavender' : rows.single['value'] as String;
   }
 
+  Future<bool> charactersEnabled() async {
+    final rows = await db.query(
+      'settings',
+      where: 'key=?',
+      whereArgs: ['characters'],
+    );
+    return rows.isEmpty || rows.single['value'] != 'off';
+  }
+
+  Future<void> setCharactersEnabled(bool enabled) async {
+    await db.insert('settings', {
+      'key': 'characters',
+      'value': enabled ? 'on' : 'off',
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
   Future<String> languageName() async {
     final rows = await db.query(
       'settings',
@@ -450,6 +466,26 @@ class Store {
       }
     }
     final order = DateTime.now().millisecondsSinceEpoch;
+    // Causal drafts carry stable, backwards-only IDs. Deleted causes leave
+    // their effects unconnected instead of attaching them to the wrong node.
+    if (items.any((item) => item.containsKey('id'))) {
+      final inserted = <String, int>{};
+      for (var i = 0; i < items.length; i++) {
+        final item = items[i];
+        final id = item['id'];
+        if (id == null || inserted.containsKey(id)) {
+          throw const FormatException('Invalid draft relationship');
+        }
+        final branch = await tx.insert('memo_branches', {
+          'memo_id': memoId,
+          'parent_id': inserted[item['parent']],
+          'text': item['quote']!.trim(),
+          'position': order + i,
+        });
+        inserted[id] = branch;
+      }
+      return true;
+    }
     for (var i = 0; i < processDraftLabels.length; i++) {
       final kind = processDraftLabels[i];
       final matching = items.where((item) => item['kind'] == kind).toList();

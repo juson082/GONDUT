@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'store.dart';
 import 'app_strings.dart';
@@ -28,6 +29,51 @@ class _HandwritingPadState extends State<HandwritingPad> {
   bool recognizing = false;
   String? language;
   Future<void> pending = Future.value();
+  Timer? recognitionTimer;
+  int revision = 0;
+  String? automaticText;
+  double canvasAspect = 1024 / 1400;
+
+  @override
+  void dispose() {
+    recognitionTimer?.cancel();
+    super.dispose();
+  }
+
+  void scheduleRecognition() {
+    revision++;
+    recognitionTimer?.cancel();
+    if (strokes.isEmpty) {
+      setState(() => automaticText = null);
+      return;
+    }
+    final current = revision;
+    recognitionTimer = Timer(const Duration(milliseconds: 1600), () async {
+      if (!mounted || current != revision) return;
+      final snapshot = strokes.map((s) => List<Offset>.of(s)).toList();
+      final lang =
+          language ??
+          (handwritingLanguages.containsKey(
+                Localizations.localeOf(context).languageCode,
+              )
+              ? Localizations.localeOf(context).languageCode
+              : 'en');
+      setState(() => recognizing = true);
+      try {
+        final text = await recognizeHandwriting(
+          snapshot,
+          lang,
+          aspectRatio: canvasAspect,
+        );
+        if (mounted && current == revision)
+          setState(() => automaticText = text);
+      } catch (_) {
+        if (mounted && current == revision) setState(() => automaticText = '');
+      } finally {
+        if (mounted && current == revision) setState(() => recognizing = false);
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -75,7 +121,9 @@ class _HandwritingPadState extends State<HandwritingPad> {
   }
 
   Future<void> recognize() async {
-    if (recognizing || strokes.isEmpty) return;
+    if (strokes.isEmpty) return;
+    recognitionTimer?.cancel();
+    revision++;
     setState(() => recognizing = true);
     try {
       await pending;
@@ -87,7 +135,13 @@ class _HandwritingPadState extends State<HandwritingPad> {
               )
               ? Localizations.localeOf(context).languageCode
               : 'en');
-      final text = await recognizeHandwriting(strokes, lang);
+      final text = automaticText?.isNotEmpty == true
+          ? automaticText!
+          : await recognizeHandwriting(
+              strokes.map((s) => List<Offset>.of(s)).toList(),
+              lang,
+              aspectRatio: canvasAspect,
+            );
       if (!mounted) return;
       if (text.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -176,31 +230,33 @@ class _HandwritingPadState extends State<HandwritingPad> {
             children: [
               Expanded(child: Text(tr(context, '손가락이나 펜으로 적어 보세요'))),
               NotebookPress(
-                enabled: strokes.isNotEmpty && !recognizing,
+                enabled: strokes.isNotEmpty,
                 child: IconButton(
                   tooltip: tr(context, '마지막 획 되돌리기'),
-                  onPressed: strokes.isEmpty || recognizing
+                  onPressed: strokes.isEmpty
                       ? null
                       : () {
                           setState(
                             () => undoneStrokes.add(strokes.removeLast()),
                           );
                           save();
+                          scheduleRecognition();
                         },
                   icon: Icon(Icons.undo),
                 ),
               ),
               NotebookPress(
-                enabled: undoneStrokes.isNotEmpty && !recognizing,
+                enabled: undoneStrokes.isNotEmpty,
                 child: IconButton(
                   tooltip: tr(context, '마지막 획 다시 실행'),
-                  onPressed: undoneStrokes.isEmpty || recognizing
+                  onPressed: undoneStrokes.isEmpty
                       ? null
                       : () {
                           setState(
                             () => strokes.add(undoneStrokes.removeLast()),
                           );
                           save();
+                          scheduleRecognition();
                         },
                   icon: const Icon(Icons.redo),
                 ),
@@ -229,9 +285,13 @@ class _HandwritingPadState extends State<HandwritingPad> {
                         child: Text(entry.value),
                       ),
                   ],
-                  onChanged: recognizing
-                      ? null
-                      : (value) => setState(() => language = value),
+                  onChanged: (value) {
+                    setState(() {
+                      language = value;
+                      automaticText = null;
+                    });
+                    scheduleRecognition();
+                  },
                 ),
               ),
               const SizedBox(width: 8),
@@ -247,29 +307,57 @@ class _HandwritingPadState extends State<HandwritingPad> {
             ],
           ),
         ),
+        SizedBox(
+          height: 60,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                recognizing
+                    ? tr(context, '손글씨 인식 중…')
+                    : (automaticText == ''
+                          ? tr(context, '손글씨를 읽지 못했습니다. 글씨와 언어를 확인해 주세요.')
+                          : automaticText ?? ''),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        ),
         Expanded(
           child: LayoutBuilder(
             builder: (context, size) {
+              if (size.maxHeight > 0)
+                canvasAspect = size.maxWidth / size.maxHeight;
               Offset normalized(Offset p) => Offset(
                 (p.dx / size.maxWidth).clamp(0, 1),
                 (p.dy / size.maxHeight).clamp(0, 1),
               );
               return Listener(
                 behavior: HitTestBehavior.opaque,
-                onPointerDown: recognizing
-                    ? null
-                    : (e) => setState(() {
-                        undoneStrokes.clear();
-                        strokes.add([normalized(e.localPosition)]);
-                      }),
+                onPointerDown: (e) => setState(() {
+                  recognitionTimer?.cancel();
+                  revision++;
+                  recognizing = false;
+                  automaticText = null;
+                  undoneStrokes.clear();
+                  strokes.add([normalized(e.localPosition)]);
+                }),
                 onPointerMove: (e) {
-                  if (!recognizing && strokes.isNotEmpty)
+                  if (strokes.isNotEmpty)
                     setState(
                       () => strokes.last.add(normalized(e.localPosition)),
                     );
                 },
-                onPointerUp: (_) => save(),
-                onPointerCancel: (_) => save(),
+                onPointerUp: (_) {
+                  save();
+                  scheduleRecognition();
+                },
+                onPointerCancel: (_) {
+                  save();
+                  scheduleRecognition();
+                },
                 child: CustomPaint(
                   key: const ValueKey('handwriting-canvas'),
                   painter: _InkPainter(

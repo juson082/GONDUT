@@ -11,6 +11,7 @@ import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
     private val worker = Executors.newSingleThreadExecutor()
+    private val handwritingRecognizer by lazy { HandwritingRecognizer(applicationContext) }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -22,13 +23,14 @@ class MainActivity : FlutterActivity() {
                 }
                 val language = call.argument<String>("language")
                 val strokes = call.argument<List<List<List<Double>>>>("strokes")
+                val aspectRatio = call.argument<Double>("aspectRatio") ?: (1024.0 / 1400.0)
                 if (language == null || strokes == null) {
                     result.error("invalid_input", "Missing handwriting or language", null)
                     return@setMethodCallHandler
                 }
                 worker.execute {
                     try {
-                        val text = HandwritingRecognizer(applicationContext).recognize(language, strokes)
+                        val text = handwritingRecognizer.recognize(language, strokes, aspectRatio)
                         runOnUiThread { result.success(text) }
                     } catch (e: Throwable) {
                         runOnUiThread { result.error("handwriting_failed", e.message ?: "Recognition failed", null) }
@@ -73,6 +75,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        worker.execute { handwritingRecognizer.close() }
         worker.shutdown()
         super.onDestroy()
     }

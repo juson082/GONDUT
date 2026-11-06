@@ -28,9 +28,13 @@ class _DraftItem {
   _DraftItem(Map<String, String> item)
     : kind = item['kind']!,
       original = item['quote']!,
+      id = item['id'],
+      parent = item['parent'],
       controller = TextEditingController(text: item['quote']);
   String kind;
   final String original;
+  final String? id;
+  final String? parent;
   final TextEditingController controller;
 }
 
@@ -56,7 +60,12 @@ class _ProcessDraftPageState extends State<ProcessDraftPage> {
         setState(() => error = tr(context, '각 항목을 1~200자로 입력하거나 삭제해 주세요.'));
         return;
       }
-      reviewed.add({'kind': item.kind, 'quote': text});
+      reviewed.add({
+        'kind': item.kind,
+        'quote': text,
+        if (item.id != null) 'id': item.id!,
+        if (item.parent != null) 'parent': item.parent!,
+      });
     }
     if (reviewed.isEmpty) {
       setState(() => error = tr(context, '추가할 항목이 없습니다.'));

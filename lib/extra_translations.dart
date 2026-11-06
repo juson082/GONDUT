@@ -15,6 +15,13 @@ String? additionalTranslation(String code, String english) {
 }
 
 const _translations = <String, (String, String, String)>{
+  'Show little people': ('小人を表示', '显示小人', 'Mostrar personajes'),
+  'Little person': ('小人', '小人', 'Personaje'),
+  'Could not save the character setting.': (
+    'キャラクター設定を保存できませんでした。',
+    '无法保存角色设置。',
+    'No se pudo guardar el ajuste de personajes.',
+  ),
   'AI tree': ('AIツリー', 'AI 树图', 'Árbol con IA'),
   'Create an AI tree from selection': (
     '選択した内容からAIツリーを作成',

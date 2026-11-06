@@ -41,13 +41,15 @@ const handwritingLanguages = <String, String>{
 
 Future<String> recognizeHandwriting(
   List<List<Offset>> strokes,
-  String language,
-) async {
+  String language, {
+  double aspectRatio = 1024 / 1400,
+}) async {
   if (strokes.isEmpty || !handwritingLanguages.containsKey(language)) {
     throw ArgumentError('Handwriting and a supported language are required');
   }
   final result = await _channel.invokeMethod<String>('recognize', {
     'language': language,
+    'aspectRatio': aspectRatio,
     'strokes': strokes.map((s) => s.map((p) => [p.dx, p.dy]).toList()).toList(),
   });
   return result?.trim() ?? '';
