@@ -15,8 +15,6 @@ dependencies:
   flutter_quill: ^11.5.0
 
   path_provider: ^2.1.4
-  sherpa_onnx: 2.0.1
-  record: 6.2.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -29,8 +27,6 @@ flutter:
       fonts:
         - asset: assets/Xiaolai-Regular.ttf
   assets:
-    - assets/whisper/
-    - assets/llm/
     - assets/handwriting/korean/
     - assets/handwriting/chinese/
     - assets/handwriting/latin/

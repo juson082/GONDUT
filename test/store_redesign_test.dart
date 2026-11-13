@@ -23,7 +23,10 @@ void main() {
         },
         onCreate: (db, version) async {
           await db.execute(
-            'CREATE TABLE memos(id INTEGER PRIMARY KEY, text TEXT NOT NULL, updated INTEGER NOT NULL, title TEXT, color INTEGER NOT NULL DEFAULT 4294960081, rich_text TEXT, ink TEXT, title_manual INTEGER NOT NULL DEFAULT 0)',
+            'CREATE TABLE folders(id INTEGER PRIMARY KEY, name TEXT NOT NULL)',
+          );
+          await db.execute(
+            "CREATE TABLE memos(id INTEGER PRIMARY KEY, text TEXT NOT NULL, updated INTEGER NOT NULL, title TEXT, color INTEGER NOT NULL DEFAULT 4294960081, rich_text TEXT, ink TEXT, title_manual INTEGER NOT NULL DEFAULT 0, folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL, kind TEXT NOT NULL DEFAULT 'note')",
           );
           await db.execute(
             'CREATE TABLE nodes(id INTEGER PRIMARY KEY, memo_id INTEGER NOT NULL REFERENCES memos(id) ON DELETE CASCADE, x REAL NOT NULL, y REAL NOT NULL)',
@@ -38,7 +41,7 @@ void main() {
             'CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL)',
           );
           await db.execute(
-            "CREATE TABLE memo_branches(id INTEGER PRIMARY KEY, memo_id INTEGER NOT NULL REFERENCES memos(id) ON DELETE CASCADE, parent_id INTEGER REFERENCES memo_branches(id) ON DELETE CASCADE, text TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0, x REAL, y REAL, shape TEXT NOT NULL DEFAULT 'rounded')",
+            "CREATE TABLE memo_branches(id INTEGER PRIMARY KEY, memo_id INTEGER NOT NULL REFERENCES memos(id) ON DELETE CASCADE, parent_id INTEGER REFERENCES memo_branches(id) ON DELETE CASCADE, text TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0, x REAL, y REAL, shape TEXT NOT NULL DEFAULT 'rounded', title TEXT NOT NULL DEFAULT '', rich_text TEXT, ink TEXT)",
           );
         },
         version: 1,
@@ -46,6 +49,41 @@ void main() {
     );
   });
   tearDown(() async => store.db.close());
+
+  test(
+    'folders, graph type and node title survive backup and restore',
+    () async {
+      final folder = await store.addFolder('Projects');
+      final memo = await store.addMemo('note');
+      await store.moveMemoToFolder(memo, folder);
+      await store.setMemoKind(memo, 'graph');
+      final node = await store.addBranch(memo, 'body');
+      await store.saveBranchContent(
+        memo,
+        node,
+        'Title',
+        'body',
+        '[{"insert":"body\\n"}]',
+        ink: '[[[0.1,0.2],[0.3,0.4]]]',
+      );
+      final backup = await store.backup();
+      await store.restore(backup);
+      expect((await store.folders()).single['name'], 'Projects');
+      expect((await store.memos()).single['kind'], 'graph');
+      expect((await store.memos()).single['folder_id'], folder);
+      expect((await store.branches(memo)).single['title'], 'Title');
+      expect(
+        (await store.branches(memo)).single['ink'],
+        '[[[0.1,0.2],[0.3,0.4]]]',
+      );
+      expect(
+        (await store.branches(memo)).single['rich_text'],
+        contains('body'),
+      );
+      await store.deleteFolder(folder);
+      expect((await store.memos()).single['folder_id'], isNull);
+    },
+  );
 
   test(
     'manual titles survive edits, generated titles and backup restore',

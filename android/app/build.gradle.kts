@@ -54,7 +54,5 @@ flutter {
 }
 
 dependencies {
-    implementation("com.google.ai.edge.litertlm:litertlm-android:0.18.1")
-    // The JNI bridge uses the compatible 1.28 runtime supplied by sherpa_onnx.
-    implementation(files("libs/onnxruntime-android-1.28.0-shared.aar"))
+    implementation(files("libs/onnxruntime-android-1.28.0.aar"))
 }

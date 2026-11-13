@@ -13,6 +13,18 @@ String tr(BuildContext context, String korean) {
 }
 
 const _english = <String, String>{
+  '이전 초안 확인': 'View previous draft',
+  '메모와 그래프는 기기에 저장됩니다. 앱은 계정이나 클라우드 동기화를 제공하지 않습니다.\n\n백업 파일은 암호화되지 않습니다. 앱을 삭제하면 기기 내부 기록이 삭제됩니다.\n\n운영자: J.MEN\n문의: juson082@gmail.com':
+      'Notes and graphs are stored on your device. The app has no accounts or cloud sync.\n\nBackups are not encrypted. Uninstalling deletes local records.\n\nOperator: J.MEN\nContact: juson082@gmail.com',
+  '일반 메모': 'Note',
+  '새 폴더': 'New folder',
+  '폴더 이름': 'Folder name',
+  '만들기': 'Create',
+  '홈': 'Home',
+  '폴더로 이동': 'Move to folder',
+  '노드 제목': 'Node title',
+  '저장된 초안이 없습니다.': 'There is no saved draft.',
+  '원문을 메모에 저장했습니다.': 'The transcript was saved as a note.',
   '소인 캐릭터 표시': 'Show little people',
   '소인 캐릭터': 'Little person',
   '캐릭터 설정을 저장하지 못했습니다.': 'Could not save the character setting.',

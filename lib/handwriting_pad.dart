@@ -181,11 +181,6 @@ class _HandwritingPadState extends State<HandwritingPad> {
                   Navigator.pop(dialogContext, (controller.text.trim(), false)),
               child: Text(tr(context, '메모에 추가')),
             ),
-            FilledButton(
-              onPressed: () =>
-                  Navigator.pop(dialogContext, (controller.text.trim(), true)),
-              child: Text(tr(context, '추가하고 AI 그래프 만들기')),
-            ),
           ],
         ),
       );
@@ -411,4 +406,39 @@ class _InkPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _InkPainter oldDelegate) => true;
+}
+
+class InkPreview extends StatelessWidget {
+  const InkPreview({super.key, required this.data});
+  final String data;
+  @override
+  Widget build(BuildContext context) {
+    try {
+      final strokes = (jsonDecode(data) as List)
+          .map(
+            (s) => (s as List)
+                .map(
+                  (p) => Offset(
+                    (p[0] as num).toDouble(),
+                    (p[1] as num).toDouble(),
+                  ),
+                )
+                .toList(),
+          )
+          .toList();
+      if (strokes.isEmpty) return const SizedBox.shrink();
+      return SizedBox(
+        height: 180,
+        child: CustomPaint(
+          painter: _InkPainter(
+            strokes,
+            Theme.of(context).colorScheme.onSurface,
+          ),
+          child: const SizedBox.expand(),
+        ),
+      );
+    } catch (_) {
+      return const SizedBox.shrink();
+    }
+  }
 }

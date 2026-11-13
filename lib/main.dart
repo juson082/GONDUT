@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -9,15 +8,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'store.dart';
-import 'voice.dart';
-import 'local_ai.dart';
+import 'process_labels.dart';
 import 'paper_theme.dart';
 import 'notebook_motion.dart';
 import 'paper_surface.dart';
 import 'tree_preview.dart';
 import 'sketch_icons.dart';
 import 'memo_tree.dart';
-import 'process_draft_page.dart';
 import 'handwriting_pad.dart';
 import 'app_strings.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
@@ -145,6 +142,8 @@ class _HomeState extends State<Home> {
   int refreshVersion = 0;
   List<Map<String, Object?>> memos = [], nodes = [], edges = [];
   Map<int, List<Map<String, Object?>>> memoTrees = {};
+  List<Map<String, Object?>> folders = [];
+  int? currentFolder;
   @override
   void initState() {
     super.initState();
@@ -154,6 +153,7 @@ class _HomeState extends State<Home> {
   Future<void> refresh() async {
     final version = ++refreshVersion;
     final m = await widget.store.memos(query);
+    final f = await widget.store.folders();
     final trees = await Future.wait(
       m.map((row) => widget.store.branches(row['id'] as int)),
     );
@@ -162,6 +162,7 @@ class _HomeState extends State<Home> {
     if (mounted && version == refreshVersion) {
       setState(() {
         memos = m;
+        folders = f;
         memoTrees = {
           for (var i = 0; i < m.length; i++) m[i]['id'] as int: trees[i],
         };
@@ -177,10 +178,15 @@ class _HomeState extends State<Home> {
     super.dispose();
   }
 
-  Future<void> edit([Map<String, Object?>? memo]) async {
+  Future<void> edit([Map<String, Object?>? memo, String? newKind]) async {
     final id = memo == null
         ? await widget.store.addMemo('')
         : memo['id'] as int;
+    if (memo == null) {
+      await widget.store.setMemoKind(id, newKind ?? 'note');
+      if (currentFolder != null)
+        await widget.store.moveMemoToFolder(id, currentFolder);
+    }
     if (!mounted) return;
     await Navigator.push(
       context,
@@ -191,10 +197,98 @@ class _HomeState extends State<Home> {
           memo?['text'] as String? ?? '',
           initialRichText: memo?['rich_text'] as String?,
           initialTitle: memo?['title'] as String?,
+          initialTree: (memo?['kind'] ?? newKind) == 'graph',
         ),
       ),
     );
     await refresh();
+  }
+
+  Future<void> createItem() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (c) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.note_add_outlined),
+              title: Text(tr(c, '일반 메모')),
+              onTap: () => Navigator.pop(c, 'note'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.account_tree_outlined),
+              title: Text(tr(c, '나무 그래프')),
+              onTap: () => Navigator.pop(c, 'graph'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.create_new_folder_outlined),
+              title: Text(tr(c, '새 폴더')),
+              onTap: () => Navigator.pop(c, 'folder'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || choice == null) return;
+    if (choice != 'folder') {
+      await edit(null, choice);
+      return;
+    }
+    var name = '';
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr(c, '새 폴더')),
+        content: TextField(
+          autofocus: true,
+          maxLength: 80,
+          onChanged: (v) => name = v,
+          decoration: InputDecoration(hintText: tr(c, '폴더 이름')),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: Text(tr(c, '취소')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(tr(c, '만들기')),
+          ),
+        ],
+      ),
+    );
+    if (saved == true && name.trim().isNotEmpty) {
+      await widget.store.addFolder(name);
+      await refresh();
+    }
+  }
+
+  Future<void> chooseFolder(int memoId) async {
+    final selected = await showModalBottomSheet<int>(
+      context: context,
+      builder: (c) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(title: Text(tr(c, '홈')), onTap: () => Navigator.pop(c, 0)),
+            for (final folder in folders)
+              ListTile(
+                leading: const Icon(Icons.folder_outlined),
+                title: Text(folder['name'] as String),
+                onTap: () => Navigator.pop(c, folder['id'] as int),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (selected != null) {
+      await widget.store.moveMemoToFolder(
+        memoId,
+        selected == 0 ? null : selected,
+      );
+      await refresh();
+    }
   }
 
   Future<void> backup() async {
@@ -361,17 +455,6 @@ class _HomeState extends State<Home> {
         ),
       ),
       actions: [
-        IconButton(
-          tooltip: tr(context, '음성 메모'),
-          icon: SketchIcon('mic'),
-          onPressed: () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => VoicePage(widget.store)),
-            );
-            await refresh();
-          },
-        ),
         PopupMenuButton<String>(
           onSelected: (v) {
             if (v == 'backup') {
@@ -393,7 +476,7 @@ class _HomeState extends State<Home> {
                     child: Text(
                       tr(
                         context,
-                        '메모, 그래프, 음성 전사와 녹음은 기기에 저장됩니다. 음성 인식은 기기에서 처리되며 앱은 계정이나 클라우드 동기화를 제공하지 않습니다.\n\n백업에는 메모와 그래프가 포함되며 녹음 파일은 포함되지 않습니다. 백업 파일은 암호화되지 않습니다.\n\n앱 삭제 시 기기 내부 기록과 녹음이 삭제됩니다. 마이크 권한은 음성 녹음에 사용됩니다.\n\n운영자: J.MEN\n문의: juson082@gmail.com',
+                        '메모와 그래프는 기기에 저장됩니다. 앱은 계정이나 클라우드 동기화를 제공하지 않습니다.\n\n백업 파일은 암호화되지 않습니다. 앱을 삭제하면 기기 내부 기록이 삭제됩니다.\n\n운영자: J.MEN\n문의: juson082@gmail.com',
                       ),
                     ),
                   ),
@@ -434,7 +517,7 @@ class _HomeState extends State<Home> {
     body: memoPage(),
     floatingActionButton: NotebookPress(
       child: FloatingActionButton.extended(
-        onPressed: () => edit(),
+        onPressed: createItem,
         icon: SketchIcon('add'),
         label: Text(tr(context, '새 메모')),
       ),
@@ -477,7 +560,48 @@ class _HomeState extends State<Home> {
     );
   }
 
-  Widget memoPage() => memos.isEmpty
+  Widget memoPage() {
+    final visible = memos
+        .where((m) => m['folder_id'] == currentFolder)
+        .toList();
+    if (currentFolder == null && folders.isNotEmpty) {
+      return ListView(
+        padding: const EdgeInsets.only(bottom: 100),
+        children: [
+          for (final folder in folders)
+            ListTile(
+              leading: const Icon(Icons.folder_outlined),
+              title: Text(folder['name'] as String),
+              onTap: () => setState(() => currentFolder = folder['id'] as int),
+            ),
+          SizedBox(
+            height: visible.isEmpty ? 120 : ((visible.length + 1) ~/ 2) * 192.0,
+            child: _memoGrid(visible),
+          ),
+        ],
+      );
+    }
+    if (currentFolder != null)
+      return Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.arrow_back),
+            title: Text(
+              folders
+                      .where((f) => f['id'] == currentFolder)
+                      .map((f) => f['name'] as String)
+                      .firstOrNull ??
+                  '',
+            ),
+            onTap: () => setState(() => currentFolder = null),
+          ),
+          Expanded(child: _memoGrid(visible)),
+        ],
+      );
+    return _memoGrid(visible);
+  }
+
+  Widget _memoGrid(List<Map<String, Object?>> visible) => visible.isEmpty
       ? Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -502,9 +626,9 @@ class _HomeState extends State<Home> {
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
           ),
-          itemCount: memos.length,
+          itemCount: visible.length,
           itemBuilder: (context, index) {
-            final m = memos[index];
+            final m = visible[index];
             final content = (m['title'] as String?)?.isNotEmpty == true
                 ? m['title'] as String
                 : (m['text'] as String);
@@ -571,8 +695,13 @@ class _HomeState extends State<Home> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: const Icon(Icons.drive_file_move_outline),
+              title: Text(tr(context, '폴더로 이동')),
+              onTap: () => Navigator.pop(c, 'move'),
+            ),
+            ListTile(
               leading: Icon(Icons.auto_awesome_outlined),
-              title: Text(tr(context, '음성 분석 초안 확인')),
+              title: Text(tr(context, '이전 초안 확인')),
               onTap: () => Navigator.pop(c, 'draft'),
             ),
             ListTile(
@@ -587,6 +716,7 @@ class _HomeState extends State<Home> {
     if (action == 'draft') {
       await showDraft(memo['id'] as int);
     }
+    if (action == 'move' && mounted) await chooseFolder(memo['id'] as int);
     if (action == 'delete' && mounted) {
       final yes = await showDialog<bool>(
         context: context,
@@ -884,24 +1014,7 @@ class _HomeState extends State<Home> {
     final draft = await widget.store.getDraft(id);
     if (!mounted) return;
     if (draft.isEmpty) {
-      final analyze = await showDialog<bool>(
-        context: context,
-        builder: (c) => AlertDialog(
-          title: Text(tr(context, '그래프 초안')),
-          content: Text(tr(context, '저장된 초안이 없습니다. 이 메모를 기기에서 분석할 수 있습니다.')),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(c, false),
-              child: Text(tr(context, '닫기')),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(c, true),
-              child: Text(tr(context, '분석')),
-            ),
-          ],
-        ),
-      );
-      if (analyze == true) await analyzeMemo(id);
+      message(tr(context, '저장된 초안이 없습니다.'));
       return;
     }
     final editors = [
@@ -983,36 +1096,6 @@ class _HomeState extends State<Home> {
     });
   }
 
-  Future<void> analyzeMemo(int id) async {
-    final text = await widget.store.memoText(id);
-    if (!mounted) return;
-    if (text == null || text.trim().isEmpty) {
-      message(tr(context, '분석할 메모가 없습니다.'));
-      return;
-    }
-    message(tr(context, '기기에서 분석 중입니다. 시간이 걸릴 수 있습니다.'));
-    try {
-      final analysis = await extractLocalDraft(text);
-      await widget.store.saveGeneratedTitle(id, text, analysis.title);
-      final draft = analysis.items;
-      await refresh();
-      if (!mounted) return;
-      if (draft.isEmpty) {
-        message(tr(context, '초안 후보를 찾지 못했습니다. 원문은 유지됩니다.'));
-        return;
-      }
-      final saved = await widget.store.saveAnalysisDraft(id, text, draft);
-      if (!mounted) return;
-      if (!saved) {
-        message(tr(context, '메모나 초안이 변경되어 분석 결과를 저장하지 않았습니다.'));
-        return;
-      }
-      if (mounted) await showDraft(id);
-    } catch (_) {
-      if (mounted) message(tr(context, '분석 실패'));
-    }
-  }
-
   String label(int id) =>
       (nodes.firstWhere(
             (n) => n['id'] == id,
@@ -1029,29 +1112,16 @@ class Editor extends StatefulWidget {
     super.key,
     this.initialRichText,
     this.initialTitle,
+    this.initialTree = false,
   });
   final Store store;
   final int id;
   final String initial;
   final String? initialRichText;
   final String? initialTitle;
+  final bool initialTree;
   @override
   State<Editor> createState() => _EditorState();
-}
-
-@visibleForTesting
-String? selectedNoteText(String source, TextSelection selection) {
-  if (!selection.isValid ||
-      selection.isCollapsed ||
-      selection.start < 0 ||
-      selection.end > source.length + 1)
-    return null;
-  // Quill includes a final document newline that is not part of saved text.
-  final start = selection.start.clamp(0, source.length);
-  final end = selection.end.clamp(0, source.length);
-  if (start >= end) return null;
-  final selected = source.substring(start, end);
-  return selected.trim().isEmpty ? null : selected;
 }
 
 class _EditorState extends State<Editor> with WidgetsBindingObserver {
@@ -1065,52 +1135,8 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
   bool handwriting = false;
   bool invalidDocument = false;
   bool saveErrorShown = false;
-  bool generatingProcess = false;
   int treeRevision = 0;
-  OverlayEntry? noticeOverlay;
-  Timer? noticeTimer;
   late String noteTitle = widget.initialTitle ?? '';
-
-  void showEditorNotice(String message) {
-    noticeTimer?.cancel();
-    noticeOverlay?.remove();
-    noticeOverlay?.dispose();
-    final scheme = Theme.of(context).colorScheme;
-    final top = MediaQuery.paddingOf(context).top + 8;
-    noticeOverlay = OverlayEntry(
-      builder: (_) => Positioned(
-        left: 20,
-        right: 20,
-        top: top,
-        child: IgnorePointer(
-          child: Semantics(
-            liveRegion: true,
-            child: Material(
-              elevation: 3,
-              color: scheme.inverseSurface,
-              borderRadius: BorderRadius.circular(14),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                child: Text(
-                  message,
-                  style: TextStyle(color: scheme.onInverseSurface),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    Overlay.of(context, rootOverlay: true).insert(noticeOverlay!);
-    noticeTimer = Timer(const Duration(seconds: 3), () {
-      noticeOverlay?.remove();
-      noticeOverlay?.dispose();
-      noticeOverlay = null;
-    });
-  }
 
   Future<void> editTitle() async {
     var input = noteTitle;
@@ -1154,6 +1180,7 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    tree = widget.initialTree;
     WidgetsBinding.instance.addObserver(this);
     quill.Document doc;
     try {
@@ -1261,20 +1288,6 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
     return plain.endsWith('\n') ? plain.substring(0, plain.length - 1) : plain;
   }
 
-  void generateSelectedProcessDraft() {
-    final source = currentText();
-    if (source.trim().isEmpty) {
-      showEditorNotice(tr(context, '먼저 메모에 내용을 적어 주세요.'));
-      return;
-    }
-    final selected = selectedNoteText(source, controller.selection);
-    if (selected == null) {
-      showEditorNotice(tr(context, '먼저 그래프로 만들 부분을 선택해 주세요.'));
-      return;
-    }
-    generateProcessDraft(analysisSource: selected);
-  }
-
   Future<void> useHandwritingText(String text, bool createGraph) async {
     if (invalidDocument) throw StateError('Invalid note');
     final existing = currentText();
@@ -1289,79 +1302,14 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
     save();
     await pending;
     if (!mounted) return;
-    if (createGraph) {
-      setState(() {
-        handwriting = false;
-        tree = true;
-      });
-      await generateProcessDraft(analysisSource: text);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(tr(context, '변환한 글을 메모에 추가했습니다.'))),
-      );
-    }
-  }
-
-  Future<void> generateProcessDraft({String? analysisSource}) async {
-    if (generatingProcess || invalidDocument) return;
-    final source = currentText();
-    if (source.trim().isEmpty) {
-      showEditorNotice(tr(context, '먼저 메모에 내용을 적어 주세요.'));
-      return;
-    }
-    setState(() => generatingProcess = true);
-    try {
-      save();
-      await pending;
-      if (!mounted) return;
-      if (currentText() != source) throw StateError('메모가 변경되었습니다. 다시 시도해 주세요.');
-      final analysis = await extractLocalDraft(analysisSource ?? source);
-      if (!mounted) return;
-      if (currentText() != source) throw StateError('메모가 변경되었습니다. 다시 시도해 주세요.');
-      if (analysis.items.isEmpty) {
-        showEditorNotice(
-          tr(context, '원문에서 확인할 수 있는 과정 후보를 찾지 못했습니다. 직접 가지를 추가할 수 있습니다.'),
-        );
-        return;
-      }
-      final applied = await Navigator.push<bool>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ProcessDraftPage(
-            store: widget.store,
-            memoId: widget.id,
-            source: source,
-            displaySource: analysisSource ?? source,
-            items: analysis.items,
-          ),
-        ),
-      );
-      if (mounted && applied == true) {
-        setState(() {
-          tree = true;
-          treeRevision++;
-        });
-        showEditorNotice(tr(context, '확인한 초안을 나무에 추가했습니다. 자유롭게 수정할 수 있습니다.'));
-      }
-    } catch (_) {
-      if (mounted)
-        showEditorNotice(
-          tr(
-            context,
-            'AI 초안을 만들지 못했습니다. 원문과 기존 가지는 보관됩니다. 메모가 길거나 변경되었는지도 확인해 주세요.',
-          ),
-        );
-    } finally {
-      if (mounted) setState(() => generatingProcess = false);
-    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(tr(context, '변환한 글을 메모에 추가했습니다.'))));
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    noticeTimer?.cancel();
-    noticeOverlay?.remove();
-    noticeOverlay?.dispose();
     timer?.cancel();
     controller.removeListener(scheduleSave);
     controller.dispose();
@@ -1520,33 +1468,6 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
                         ),
                       ),
                     ),
-                  if (!tree && !handwriting && !invalidDocument)
-                    TextFieldTapRegion(
-                      child: NotebookPress(
-                        enabled: !generatingProcess,
-                        child: Tooltip(
-                          message: tr(context, '선택한 내용으로 AI 그래프 만들기'),
-                          child: TextButton.icon(
-                            onPressed: generatingProcess
-                                ? null
-                                : generateSelectedProcessDraft,
-                            icon: generatingProcess
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.auto_awesome_outlined,
-                                    size: 20,
-                                  ),
-                            label: Text(tr(context, 'AI 그래프')),
-                          ),
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),
@@ -1586,234 +1507,4 @@ class EdgesPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant EdgesPainter old) => true;
-}
-
-class VoicePage extends StatefulWidget {
-  const VoicePage(this.store, {super.key});
-  final Store store;
-  @override
-  State<VoicePage> createState() => _VoicePageState();
-}
-
-class _VoicePageState extends State<VoicePage> {
-  final recorder = VoiceRecorder();
-  Timer? limit;
-  bool recording = false, busy = false;
-  List<FileSystemEntity> recordings = [];
-  String status = '녹음을 시작한 뒤 마치기를 누르세요. 음성은 기기에서 처리됩니다. 한 번에 최대 5분입니다.';
-  @override
-  void initState() {
-    super.initState();
-    loadRecordings();
-  }
-
-  Future<void> loadRecordings() async {
-    final files = await recorder.recordings();
-    if (mounted) setState(() => recordings = files);
-  }
-
-  @override
-  void dispose() {
-    limit?.cancel();
-    recorder.dispose();
-    super.dispose();
-  }
-
-  Future<void> start() async {
-    try {
-      await recorder.start();
-      if (mounted) {
-        setState(() {
-          recording = true;
-          status = tr(context, '녹음 중 (최대 5분)');
-        });
-        limit = Timer(Duration(minutes: 5), () {
-          if (mounted && recording) stop();
-        });
-      }
-    } catch (e) {
-      if (mounted)
-        setState(
-          () => status = e is StateError && e.message == '마이크 권한이 필요합니다'
-              ? tr(context, '마이크 권한이 필요합니다')
-              : tr(context, '녹음 시작 실패'),
-        );
-    }
-  }
-
-  Future<void> stop() async {
-    limit?.cancel();
-    setState(() {
-      recording = false;
-      busy = true;
-      status = tr(context, '음성을 기기에서 인식 중입니다. 처음에는 모델 준비에 시간이 걸립니다.');
-    });
-    try {
-      final path = await recorder.stop();
-      if (path == null)
-        throw StateError(
-          mounted ? tr(context, '녹음 파일이 없습니다') : 'Recording file is missing',
-        );
-      await processRecording(path);
-    } catch (_) {
-      if (mounted)
-        setState(
-          () => status =
-              '${tr(context, '처리 실패')}\n${tr(context, '녹음 파일은 기기에 보관됩니다.')}',
-        );
-    } finally {
-      await loadRecordings();
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  Future<void> processRecording(String path) async {
-    final text = await transcribe(path);
-    if (text.isEmpty)
-      throw StateError(
-        mounted
-            ? tr(context, '인식된 텍스트가 없습니다. 녹음은 기기에 보관됩니다.')
-            : 'No text recognized',
-      );
-    final id = await widget.store.addMemo(text);
-    if (mounted)
-      setState(() => status = tr(context, '원문을 저장했습니다. 기기에서 내용을 분석 중입니다.'));
-    final command = parseCommand(text);
-    if (command != null) {
-      bool applied;
-      try {
-        applied = await widget.store.applyMemoTreeCommand(
-          command.tree,
-          command.parent,
-          command.content,
-          transcriptMemoId: id,
-        );
-      } catch (_) {
-        if (mounted)
-          setState(
-            () =>
-                status = '${tr(context, '원문을 저장했지만 가지에 추가하지 못했습니다.')}\n\n$text',
-          );
-        return;
-      }
-      if (mounted)
-        setState(
-          () => status =
-              '${tr(context, applied ? '원문을 저장하고 지정한 가지에 추가했습니다.' : '원문을 저장했습니다. 메모 또는 가지를 확실히 찾지 못해 연결하지 않았습니다.')}\n\n$text',
-        );
-      return;
-    }
-    try {
-      final analysis = await extractLocalDraft(text);
-      await widget.store.saveGeneratedTitle(id, text, analysis.title);
-      final draft = analysis.items;
-      final saved =
-          draft.isNotEmpty &&
-          await widget.store.saveAnalysisDraft(id, text, draft);
-      if (mounted)
-        setState(
-          () => status = draft.isEmpty
-              ? '${tr(context, '원문을 메모에 저장했습니다. 생성된 그래프 초안이 없습니다.')}\n\n$text'
-              : saved
-              ? '${tr(context, '원문과 AI 초안을 저장했습니다. 메모를 길게 눌러 초안을 확인하세요.')}\n\n$text'
-              : '${tr(context, '메모나 초안이 변경되어 새 분석 결과를 저장하지 않았습니다.')}\n\n$text',
-        );
-    } catch (_) {
-      if (mounted)
-        setState(
-          () => status = '${tr(context, '원문을 저장했지만 AI 분석에 실패했습니다.')}\n\n$text',
-        );
-    }
-  }
-
-  Future<void> retryRecording(String path) async {
-    setState(() {
-      busy = true;
-      status = tr(context, '저장된 녹음을 다시 인식 중입니다.');
-    });
-    try {
-      await processRecording(path);
-    } catch (_) {
-      if (mounted)
-        setState(
-          () => status =
-              '${tr(context, '처리 실패')}\n${tr(context, '녹음 파일은 기기에 보관됩니다.')}',
-        );
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: !recording && !busy,
-    child: Scaffold(
-      appBar: AppBar(title: Text(tr(context, '음성 메모'))),
-      body: Padding(
-        padding: EdgeInsets.all(24),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(tr(context, status)),
-              SizedBox(height: 24),
-              NotebookPress(
-                enabled: !busy,
-                child: FilledButton.icon(
-                  onPressed: busy
-                      ? null
-                      : recording
-                      ? stop
-                      : start,
-                  icon: Icon(recording ? Icons.stop : Icons.mic),
-                  label: Text(
-                    recording ? tr(context, '녹음 마치기') : tr(context, '녹음 시작'),
-                  ),
-                ),
-              ),
-              SizedBox(height: 24),
-              Text(tr(context, '기기에 저장된 녹음')),
-              for (final file in recordings)
-                ListTile(
-                  title: Text(file.uri.pathSegments.last),
-                  subtitle: Text(tr(context, '다시 인식하면 새 메모가 생성됩니다.')),
-                  onTap: busy || recording
-                      ? null
-                      : () => retryRecording(file.path),
-                  trailing: IconButton(
-                    tooltip: tr(context, '녹음 삭제'),
-                    onPressed: busy || recording
-                        ? null
-                        : () async {
-                            final yes = await showDialog<bool>(
-                              context: context,
-                              builder: (c) => AlertDialog(
-                                title: Text(tr(context, '녹음 삭제')),
-                                content: Text(tr(context, '이 녹음 파일을 삭제할까요?')),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(c, false),
-                                    child: Text(tr(context, '취소')),
-                                  ),
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(c, true),
-                                    child: Text(tr(context, '삭제')),
-                                  ),
-                                ],
-                              ),
-                            );
-                            if (yes == true) {
-                              await File(file.path).delete();
-                              await loadRecordings();
-                            }
-                          },
-                    icon: Icon(Icons.delete_outline),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
 }

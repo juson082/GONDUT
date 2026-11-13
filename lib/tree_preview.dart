@@ -76,7 +76,9 @@ class _PreviewPainter extends CustomPainter {
       if (pos == null) continue;
       final text = TextPainter(
         text: TextSpan(
-          text: item['text'] as String? ?? '',
+          text: (item['title'] as String? ?? '').isNotEmpty
+              ? item['title'] as String
+              : item['text'] as String? ?? '',
           style: textStyle.copyWith(color: color),
         ),
         textDirection: TextDirection.ltr,

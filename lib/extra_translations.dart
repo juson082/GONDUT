@@ -15,6 +15,29 @@ String? additionalTranslation(String code, String english) {
 }
 
 const _translations = <String, (String, String, String)>{
+  'View previous draft': ('以前の下書きを表示', '查看以前的草稿', 'Ver borrador anterior'),
+  'Notes and graphs are stored on your device. The app has no accounts or cloud sync.\n\nBackups are not encrypted. Uninstalling deletes local records.\n\nOperator: J.MEN\nContact: juson082@gmail.com': (
+    'メモとグラフは端末に保存されます。アカウントやクラウド同期はありません。\n\nバックアップは暗号化されません。アプリを削除すると端末内の記録も削除されます。\n\n運営者: J.MEN\nお問い合わせ: juson082@gmail.com',
+    '笔记和图表保存在设备上。应用不提供账户或云同步。\n\n备份未加密。卸载应用会删除本地记录。\n\n运营者：J.MEN\n联系：juson082@gmail.com',
+    'Las notas y los gráficos se guardan en el dispositivo. No hay cuentas ni sincronización en la nube.\n\nLas copias de seguridad no están cifradas. Al desinstalar se eliminan los datos locales.\n\nOperador: J.MEN\nContacto: juson082@gmail.com',
+  ),
+  'Note': ('メモ', '笔记', 'Nota'),
+  'New folder': ('新しいフォルダー', '新建文件夹', 'Nueva carpeta'),
+  'Folder name': ('フォルダー名', '文件夹名称', 'Nombre de carpeta'),
+  'Create': ('作成', '创建', 'Crear'),
+  'Home': ('ホーム', '首页', 'Inicio'),
+  'Move to folder': ('フォルダーに移動', '移至文件夹', 'Mover a carpeta'),
+  'Node title': ('ノードのタイトル', '节点标题', 'Título del nodo'),
+  'There is no saved draft.': (
+    '保存された下書きはありません。',
+    '没有已保存的草稿。',
+    'No hay ningún borrador guardado.',
+  ),
+  'The transcript was saved as a note.': (
+    '文字起こしをメモに保存しました。',
+    '转录文本已保存为笔记。',
+    'La transcripción se guardó como nota.',
+  ),
   'Show little people': ('小人を表示', '显示小人', 'Mostrar personajes'),
   'Little person': ('小人', '小人', 'Personaje'),
   'Could not save the character setting.': (

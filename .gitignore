@@ -4,6 +4,7 @@ build/
 .flutter-plugins-dependencies
 .packages
 android/.gradle/
+android/.kotlin/
 android/local.properties
 .tools/
 play-console/private/

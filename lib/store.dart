@@ -2,14 +2,14 @@ import 'dart:convert';
 
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
-import 'local_ai.dart' show processDraftLabels;
+import 'process_labels.dart' show processDraftLabels;
 
 class Store {
   late Database db;
   Future<void> open({String? path}) async {
     db = await openDatabase(
       path ?? join(await getDatabasesPath(), 'memo_graph.db'),
-      version: 9,
+      version: 10,
       onConfigure: (d) => d.execute('PRAGMA foreign_keys = ON'),
       onCreate: (d, _) async {
         await d.execute(
@@ -33,6 +33,7 @@ class Store {
           'ALTER TABLE memos ADD COLUMN title_manual INTEGER NOT NULL DEFAULT 0',
         );
         await _createBranches(d);
+        await _addOrganization(d);
       },
       onUpgrade: (d, oldVersion, newVersion) async {
         if (oldVersion < 2)
@@ -71,6 +72,7 @@ class Store {
             'ALTER TABLE memos ADD COLUMN title_manual INTEGER NOT NULL DEFAULT 0',
           );
         }
+        if (oldVersion < 10) await _addOrganization(d);
       },
     );
   }
@@ -78,6 +80,68 @@ class Store {
   static Future<void> _createBranches(DatabaseExecutor db) => db.execute(
     "CREATE TABLE memo_branches(id INTEGER PRIMARY KEY, memo_id INTEGER NOT NULL REFERENCES memos(id) ON DELETE CASCADE, parent_id INTEGER REFERENCES memo_branches(id) ON DELETE CASCADE, text TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0, x REAL, y REAL, shape TEXT NOT NULL DEFAULT 'rounded')",
   );
+
+  static Future<void> _addOrganization(DatabaseExecutor db) async {
+    await db.execute(
+      'CREATE TABLE folders(id INTEGER PRIMARY KEY, name TEXT NOT NULL)',
+    );
+    await db.execute(
+      'ALTER TABLE memos ADD COLUMN folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL',
+    );
+    await db.execute(
+      "ALTER TABLE memos ADD COLUMN kind TEXT NOT NULL DEFAULT 'note'",
+    );
+    await db.execute(
+      "ALTER TABLE memo_branches ADD COLUMN title TEXT NOT NULL DEFAULT ''",
+    );
+    await db.execute('ALTER TABLE memo_branches ADD COLUMN rich_text TEXT');
+    await db.execute('ALTER TABLE memo_branches ADD COLUMN ink TEXT');
+  }
+
+  Future<List<Map<String, Object?>>> folders() =>
+      db.query('folders', orderBy: 'name COLLATE NOCASE, id');
+  Future<int> addFolder(String name) =>
+      db.insert('folders', {'name': name.trim()});
+  Future<void> moveMemoToFolder(int id, int? folderId) async {
+    await db.update(
+      'memos',
+      {'folder_id': folderId},
+      where: 'id=?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> deleteFolder(int id) async =>
+      db.delete('folders', where: 'id=?', whereArgs: [id]);
+  Future<void> setMemoKind(int id, String kind) async {
+    if (kind != 'note' && kind != 'graph') throw ArgumentError.value(kind);
+    await db.update('memos', {'kind': kind}, where: 'id=?', whereArgs: [id]);
+  }
+
+  Future<void> setBranchTitle(int memoId, int branchId, String title) async {
+    await db.update(
+      'memo_branches',
+      {'title': title.trim()},
+      where: 'memo_id=? AND id=?',
+      whereArgs: [memoId, branchId],
+    );
+  }
+
+  Future<void> saveBranchContent(
+    int memoId,
+    int branchId,
+    String title,
+    String text,
+    String richText, {
+    String? ink,
+  }) async {
+    await db.update(
+      'memo_branches',
+      {'title': title.trim(), 'text': text, 'rich_text': richText, 'ink': ink},
+      where: 'memo_id=? AND id=?',
+      whereArgs: [memoId, branchId],
+    );
+  }
 
   Future<void> setBranchShape(int memoId, int id, String shape) async {
     if (!const {'rounded', 'pill', 'circle', 'diamond'}.contains(shape))
@@ -400,7 +464,8 @@ class Store {
 
   Future<String> backup() => db.transaction(
     (tx) async => jsonEncode({
-      'version': 9,
+      'version': 10,
+      'folders': await tx.query('folders', orderBy: 'id'),
       'memos': await tx.query('memos'),
       'nodes': await tx.query('nodes'),
       'edges': await tx.query('edges'),
@@ -781,7 +846,8 @@ class Store {
             decoded['version'] != 6 &&
             decoded['version'] != 7 &&
             decoded['version'] != 8 &&
-            decoded['version'] != 9) ||
+            decoded['version'] != 9 &&
+            decoded['version'] != 10) ||
         decoded['memos'] is! List ||
         decoded['nodes'] is! List ||
         decoded['edges'] is! List) {
@@ -793,6 +859,15 @@ class Store {
       await tx.delete('edges');
       await tx.delete('nodes');
       await tx.delete('memos');
+      await tx.delete('folders');
+      if (decoded['version'] >= 10) {
+        if (decoded['folders'] is! List)
+          throw const FormatException('Invalid folders');
+        for (final row in decoded['folders']) {
+          if (row is! Map) throw const FormatException('Invalid folder');
+          await tx.insert('folders', Map<String, Object?>.from(row));
+        }
+      }
       for (final table in ['memos', 'nodes', 'edges']) {
         for (final row in decoded[table]) {
           if (row is! Map) throw const FormatException('잘못된 백업 항목');

@@ -7,6 +7,7 @@ import 'package:memo_graph/paper_theme.dart';
 import 'package:memo_graph/memo_tree.dart';
 import 'package:memo_graph/tree_preview.dart';
 import 'package:memo_graph/garden_person.dart';
+import 'package:memo_graph/handwriting_pad.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -18,6 +19,32 @@ class MemoryStore extends Store {
   String theme = 'lavender';
   String language = 'system';
   bool showCharacters = true;
+  String? createdKind;
+  @override
+  Future<int> addMemo(String text) async => 1;
+  @override
+  Future<List<Map<String, Object?>>> folders() async => [];
+  @override
+  Future<void> setMemoKind(int id, String kind) async {
+    createdKind = kind;
+  }
+
+  @override
+  Future<void> saveBranchContent(
+    int memoId,
+    int branchId,
+    String title,
+    String text,
+    String richText, {
+    String? ink,
+  }) async {
+    final row = treeItems.firstWhere((r) => r['id'] == branchId);
+    row['title'] = title;
+    row['text'] = text;
+    row['rich_text'] = richText;
+    row['ink'] = ink;
+  }
+
   @override
   Future<bool> charactersEnabled() async => showCharacters;
   @override
@@ -159,6 +186,19 @@ class SelectedDraftStore extends MemoryStore {
 }
 
 void main() {
+  testWidgets('home can create a graph directly', (tester) async {
+    final store = MemoryStore();
+    await tester.pumpWidget(MemoApp(store));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('새 메모'));
+    await tester.pumpAndSettle();
+    expect(find.text('일반 메모'), findsOneWidget);
+    expect(find.text('새 폴더'), findsOneWidget);
+    await tester.tap(find.text('나무 그래프'));
+    await tester.pumpAndSettle();
+    expect(store.createdKind, 'graph');
+    expect(find.byType(MemoTree), findsOneWidget);
+  });
   testWidgets('tree displays little people only when enabled', (tester) async {
     final store = MemoryStore();
     store.treeItems.add({
@@ -182,6 +222,47 @@ void main() {
     expect(find.byType(GardenPerson), findsNothing);
     expect(store.treeItems.single['text'], '생각');
   });
+  testWidgets('graph node saves and reopens its own handwriting', (
+    tester,
+  ) async {
+    final store = MemoryStore();
+    store.treeItems.add({
+      'id': 1,
+      'memo_id': 1,
+      'parent_id': null,
+      'text': '생각',
+      'position': 1,
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('ko'),
+        supportedLocales: const [Locale('ko')],
+        localizationsDelegates: [
+          ...GlobalMaterialLocalizations.delegates,
+          quill.FlutterQuillLocalizations.delegate,
+        ],
+        home: Scaffold(body: MemoTree(store: store, memoId: 1)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('생각'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('branch-preview-edit')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('손글씨'));
+    await tester.pumpAndSettle();
+    await tester.dragFrom(
+      tester.getCenter(find.byKey(const ValueKey('handwriting-canvas'))),
+      const Offset(25, 15),
+    );
+    await tester.pump();
+    await tester.tap(find.text('저장'));
+    await tester.pumpAndSettle();
+    expect(store.treeItems.single['ink'], isNotNull);
+    await tester.tap(find.text('생각'));
+    await tester.pumpAndSettle();
+    expect(find.byType(InkPreview), findsOneWidget);
+  });
   setUp(() {
     TestWidgetsFlutterBinding.ensureInitialized()
         .platformDispatcher
@@ -192,147 +273,6 @@ void main() {
   tearDown(() {
     TestWidgetsFlutterBinding.ensureInitialized().platformDispatcher
         .clearLocalesTestValue();
-  });
-  testWidgets(
-    'AI tree uses only selected text and preserves full source for review',
-    (tester) async {
-      final store = SelectedDraftStore();
-      String? prompt;
-      const channel = MethodChannel('memo_graph/local_ai');
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
-        call,
-      ) async {
-        prompt = (call.arguments as Map)['prompt'] as String;
-        return '{"items":[{"kind":"decision","quote":"선택한 판단"}]}';
-      });
-      addTearDown(
-        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          channel,
-          null,
-        ),
-      );
-      await tester.pumpWidget(
-        MaterialApp(
-          locale: const Locale('ko'),
-          supportedLocales: const [Locale('ko')],
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-            quill.FlutterQuillLocalizations.delegate,
-          ],
-          home: Editor(store, 1, '선택한 판단\n선택하지 않은 비밀'),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final editor = tester.widget<quill.QuillEditor>(
-        find.byType(quill.QuillEditor),
-      );
-      editor.focusNode.requestFocus();
-      await tester.pumpAndSettle();
-      editor.controller.updateSelection(
-        const TextSelection(baseOffset: 0, extentOffset: 6),
-        quill.ChangeSource.local,
-      );
-      await tester.pump();
-      await tester.tap(find.text('AI 그래프'));
-      await tester.pumpAndSettle();
-      expect(prompt, contains('선택한 판단'));
-      expect(prompt, isNot(contains('선택하지 않은 비밀')));
-      expect(find.text('과정 초안 확인'), findsOneWidget);
-      await tester.tap(find.text('원문 보기'));
-      await tester.pumpAndSettle();
-      expect(find.text('선택한 판단'), findsWidgets);
-      expect(find.text('선택하지 않은 비밀'), findsNothing);
-      await tester.ensureVisible(find.text('확인한 초안을 나무에 추가'));
-      await tester.tap(find.text('확인한 초안을 나무에 추가'));
-      await tester.pumpAndSettle();
-      expect(store.draftSource, '선택한 판단\n선택하지 않은 비밀');
-      expect(store.reviewed!.single['quote'], '선택한 판단');
-      expect(store.value, '선택한 판단\n선택하지 않은 비밀');
-      expect(find.text('AI 과정 초안'), findsNothing);
-    },
-  );
-
-  testWidgets('selection notice does not steal focus or block editing', (
-    tester,
-  ) async {
-    final store = MemoryStore();
-    await tester.pumpWidget(
-      MaterialApp(
-        locale: const Locale('ko'),
-        supportedLocales: const [Locale('ko')],
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          quill.FlutterQuillLocalizations.delegate,
-        ],
-        home: Editor(store, 1, '메모 내용'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    final editor = tester.widget<quill.QuillEditor>(
-      find.byType(quill.QuillEditor),
-    );
-    editor.focusNode.requestFocus();
-    await tester.pumpAndSettle();
-    expect(editor.focusNode.hasFocus, isTrue);
-    expect(tester.testTextInput.isVisible, isTrue);
-    await tester.tap(find.text('AI 그래프'));
-    await tester.pump();
-    expect(find.text('먼저 그래프로 만들 부분을 선택해 주세요.'), findsOneWidget);
-    expect(editor.focusNode.hasFocus, isTrue);
-    expect(tester.testTextInput.isVisible, isTrue);
-    tester.testTextInput.updateEditingValue(
-      const TextEditingValue(
-        text: '새 메모 내용\n',
-        selection: TextSelection.collapsed(offset: 2),
-      ),
-    );
-    await tester.pump();
-    expect(editor.controller.document.toPlainText(), startsWith('새 메모 내용'));
-    expect(editor.focusNode.hasFocus, isTrue);
-    await tester.pump(const Duration(seconds: 4));
-    expect(editor.focusNode.hasFocus, isTrue);
-    expect(find.text('먼저 그래프로 만들 부분을 선택해 주세요.'), findsNothing);
-  });
-  testWidgets('empty-note notice keeps the keyboard available', (tester) async {
-    final store = MemoryStore();
-    await tester.pumpWidget(
-      MaterialApp(
-        locale: const Locale('ko'),
-        supportedLocales: const [Locale('ko')],
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          quill.FlutterQuillLocalizations.delegate,
-        ],
-        home: Editor(store, 1, ''),
-      ),
-    );
-    await tester.pumpAndSettle();
-    final editor = tester.widget<quill.QuillEditor>(
-      find.byType(quill.QuillEditor),
-    );
-    editor.focusNode.requestFocus();
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('AI 그래프'));
-    await tester.pump();
-    expect(find.text('먼저 메모에 내용을 적어 주세요.'), findsOneWidget);
-    expect(tester.testTextInput.isVisible, isTrue);
-    tester.testTextInput.updateEditingValue(
-      const TextEditingValue(
-        text: '새 기록\n',
-        selection: TextSelection.collapsed(offset: 4),
-      ),
-    );
-    await tester.pump();
-    expect(editor.controller.document.toPlainText(), '새 기록\n');
-    expect(editor.focusNode.hasFocus, isTrue);
-    await tester.pump(const Duration(seconds: 4));
-    expect(editor.focusNode.hasFocus, isTrue);
   });
   testWidgets('tapping the note title edits it and displays the saved title', (
     tester,
@@ -382,7 +322,10 @@ void main() {
       MaterialApp(
         locale: const Locale('ko'),
         supportedLocales: const [Locale('ko')],
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        localizationsDelegates: [
+          ...GlobalMaterialLocalizations.delegates,
+          quill.FlutterQuillLocalizations.delegate,
+        ],
         home: Home(store),
       ),
     );
@@ -479,7 +422,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 80));
     await tester.tapAt(canvasCenter + const Offset(110, -110));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), '첫 생각');
+    tester
+        .widget<quill.QuillEditor>(find.byType(quill.QuillEditor).last)
+        .controller
+        .document
+        .insert(0, '첫 생각');
+    await tester.pump();
     await tester.tap(find.text('저장'));
     await tester.pumpAndSettle();
     expect(find.text('첫 생각'), findsOneWidget);
@@ -538,7 +486,10 @@ void main() {
         MaterialApp(
           locale: const Locale('ko'),
           supportedLocales: const [Locale('ko')],
-          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          localizationsDelegates: [
+            ...GlobalMaterialLocalizations.delegates,
+            quill.FlutterQuillLocalizations.delegate,
+          ],
           home: Scaffold(body: MemoTree(store: store, memoId: 1)),
         ),
       );
@@ -598,7 +549,10 @@ void main() {
       MaterialApp(
         locale: const Locale('ko'),
         supportedLocales: const [Locale('ko')],
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        localizationsDelegates: [
+          ...GlobalMaterialLocalizations.delegates,
+          quill.FlutterQuillLocalizations.delegate,
+        ],
         home: Scaffold(body: MemoTree(store: store, memoId: 1)),
       ),
     );
@@ -638,7 +592,10 @@ void main() {
       MaterialApp(
         locale: const Locale('ko'),
         supportedLocales: const [Locale('ko')],
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        localizationsDelegates: [
+          ...GlobalMaterialLocalizations.delegates,
+          quill.FlutterQuillLocalizations.delegate,
+        ],
         home: Scaffold(body: MemoTree(store: store, memoId: 1)),
       ),
     );
@@ -654,27 +611,39 @@ void main() {
     expect(find.text('연결 변경'), findsOneWidget);
     await tester.tapAt(const Offset(10, 10));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('기존 생각').last);
+    await tester.tap(find.byKey(const ValueKey('branch-preview-edit')));
     await tester.pumpAndSettle();
     tester.view.viewInsets = const FakeViewPadding(bottom: 300);
     await tester.pumpAndSettle();
-    expect(tester.getSize(find.byType(TextField)).width, greaterThan(300));
-    expect(tester.getSize(find.byType(TextField)).height, greaterThan(150));
-    expect(tester.getBottomRight(find.text('저장')).dy, lessThanOrEqualTo(500));
-    final field = tester.widget<TextField>(find.byType(TextField));
-    expect(field.keyboardType, TextInputType.multiline);
-    expect(field.textInputAction, TextInputAction.newline);
-    expect(field.expands, isTrue);
-    await tester.enterText(find.byType(TextField), '수정한 생각\n두 번째 줄');
+    expect(
+      tester.getSize(find.byType(quill.QuillEditor).last).width,
+      greaterThan(300),
+    );
+    await tester.enterText(find.byType(TextField), '노드 제목');
+    final nodeEditor = tester.widget<quill.QuillEditor>(
+      find.byType(quill.QuillEditor).last,
+    );
+    nodeEditor.controller.replaceText(
+      0,
+      nodeEditor.controller.document.length - 1,
+      '수정한 생각\n두 번째 줄',
+      const TextSelection.collapsed(offset: 0),
+    );
+    await tester.pump();
     await tester.tap(find.text('저장'));
     await tester.pumpAndSettle();
     expect(store.treeItems.single['text'], '수정한 생각\n두 번째 줄');
-    await tester.tap(find.text('수정한 생각\n두 번째 줄'));
+    await tester.tap(find.text('노드 제목'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('수정한 생각\n두 번째 줄').last);
+    await tester.tap(find.byKey(const ValueKey('branch-preview-edit')));
     await tester.pumpAndSettle();
     expect(
-      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      tester
+          .widget<quill.QuillEditor>(find.byType(quill.QuillEditor).last)
+          .controller
+          .document
+          .toPlainText()
+          .trim(),
       '수정한 생각\n두 번째 줄',
     );
   });
@@ -729,54 +698,6 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
     },
   );
-
-  testWidgets('handwriting can create a reviewable AI tree draft', (
-    tester,
-  ) async {
-    final store = MemoryStore();
-    final messenger =
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-    const inkChannel = MethodChannel('memo_graph/handwriting');
-    const aiChannel = MethodChannel('memo_graph/local_ai');
-    messenger.setMockMethodCallHandler(inkChannel, (_) async => '비가 내렸다');
-    messenger.setMockMethodCallHandler(aiChannel, (call) async {
-      expect(call.arguments['prompt'], isNot(contains('이전 기록')));
-      return '{"items":[{"kind":"observation","quote":"비가 내렸다"}]}';
-    });
-    addTearDown(() {
-      messenger.setMockMethodCallHandler(inkChannel, null);
-      messenger.setMockMethodCallHandler(aiChannel, null);
-    });
-    await tester.pumpWidget(
-      MaterialApp(
-        locale: const Locale('ko'),
-        supportedLocales: const [Locale('ko')],
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          quill.FlutterQuillLocalizations.delegate,
-        ],
-        home: Editor(store, 1, '이전 기록'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('손글씨'));
-    await tester.pumpAndSettle();
-    await tester.dragFrom(
-      tester.getCenter(find.byKey(const ValueKey('handwriting-canvas'))),
-      const Offset(35, 25),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('글자로 변환'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('추가하고 AI 그래프 만들기'));
-    await tester.pumpAndSettle();
-    expect(store.value, '이전 기록\n비가 내렸다');
-    expect(find.text('과정 초안 확인'), findsOneWidget);
-    expect(find.text('비가 내렸다'), findsWidgets);
-    expect(store.treeItems, isEmpty);
-  });
 
   testWidgets('settings changes and saves the app theme', (tester) async {
     final store = MemoryStore();
@@ -895,7 +816,10 @@ void main() {
         MaterialApp(
           locale: Locale(entry.$1),
           supportedLocales: [Locale(entry.$1)],
-          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          localizationsDelegates: [
+            ...GlobalMaterialLocalizations.delegates,
+            quill.FlutterQuillLocalizations.delegate,
+          ],
           home: Scaffold(body: MemoTree(store: MemoryStore(), memoId: 1)),
         ),
       );

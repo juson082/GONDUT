@@ -101,7 +101,9 @@ class HandwritingRecognizer(private val context: Context) {
         var last = -1
         for (y in 0 until height) if (used[y]) {
             if (start < 0) start = y
-            else if (y - last > 28) { groups.add(Pair(start, last)); start = y }
+            // Korean syllables often have separated upper/lower strokes. A
+            // fixed 28px gap split one syllable into several unrelated lines.
+            else if (y - last > max(28, width / 16)) { groups.add(Pair(start, last)); start = y }
             last = y
         }
         if (start >= 0) groups.add(Pair(start, last))

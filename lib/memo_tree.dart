@@ -1,11 +1,15 @@
 import 'dart:math' as math;
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'store.dart';
 import 'app_strings.dart';
 import 'plant_layout.dart';
 import 'plant_lines.dart';
 import 'notebook_motion.dart';
 import 'garden_person.dart';
+import 'garden_routes.dart';
+import 'handwriting_pad.dart';
 
 /// A tree belongs to one memo; it never links separate memos together.
 class MemoTree extends StatefulWidget {
@@ -21,6 +25,10 @@ class _MemoTreeState extends State<MemoTree>
   List<Map<String, Object?>> items = [];
   final collapsed = <int>{};
   final transformation = TransformationController();
+  final graphKey = GlobalKey();
+  final random = math.Random();
+  final personRoutes = <int, GardenRoute>{};
+  final personDrag = <int, ValueNotifier<Offset?>>{};
   bool fittedInitially = false;
   Map<int, Offset> visiblePositions = {};
   int? draggingId;
@@ -135,11 +143,11 @@ class _MemoTreeState extends State<MemoTree>
     var right = values.map((p) => p.dx + 174).reduce(math.max) + 35;
     var bottom = values.map((p) => p.dy + 86).reduce(math.max) + 35;
     if (showCharacters) {
-      for (final p in _characterPositions(visiblePositions)) {
-        left = math.min(left, p.dx - 20);
-        top = math.min(top, p.dy - 20);
-        right = math.max(right, p.dx + 92);
-        bottom = math.max(bottom, p.dy + 143);
+      for (final route in _characterPositions(visiblePositions)) {
+        left = math.min(left, route.bounds.left - 20);
+        top = math.min(top, route.bounds.top - 20);
+        right = math.max(right, route.bounds.right + 20);
+        bottom = math.max(bottom, route.bounds.bottom + 20);
       }
     }
     final scale =
@@ -183,6 +191,9 @@ class _MemoTreeState extends State<MemoTree>
 
   @override
   void dispose() {
+    for (final notifier in personDrag.values) {
+      notifier.dispose();
+    }
     fitAnimation.dispose();
     transformation.dispose();
     super.dispose();
@@ -211,20 +222,145 @@ class _MemoTreeState extends State<MemoTree>
     if (mounted)
       setState(() {
         items = next;
+        // Routes attached to changed branches are recomputed; explicit drops
+        // remain where the user placed them for this editor session.
+        personRoutes.removeWhere((_, route) => route.branchId >= 0);
         showCharacters = enabled;
         loading = false;
       });
   }
 
+  Offset? _scenePoint(Offset global) {
+    final box = graphKey.currentContext?.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return null;
+    final point = transformation.toScene(box.globalToLocal(global));
+    return Offset(point.dx.clamp(0, 6000), point.dy.clamp(0, 6000));
+  }
+
+  Offset _safePersonDrop(Offset position, Map<int, Offset> positions) {
+    var foot = position;
+    // When dropped on text, land at the top of that node rather than hiding
+    // behind the text. The drop changes only the character, never the graph.
+    for (final p in positions.values) {
+      final textArea = Rect.fromLTWH(p.dx + 12, p.dy + 14, 150, 58);
+      final sprite = Rect.fromLTWH(
+        foot.dx - gardenSpriteWidth / 2,
+        foot.dy - gardenSpriteHeight * .8,
+        gardenSpriteWidth,
+        gardenSpriteHeight,
+      );
+      if (sprite.overlaps(textArea)) {
+        foot = Offset(foot.dx.clamp(p.dx + 12, p.dx + 162), p.dy);
+      }
+    }
+    return foot;
+  }
+
+  void _requestPersonRoute(
+    int index,
+    Offset foot,
+    Map<int, Offset> positions,
+    GardenRoute current,
+  ) {
+    final candidates = gardenRoutes(
+      items,
+      positions,
+      limit: 1000,
+      allowOverlaps: true,
+    );
+    final neighbors = <GardenRoute>[];
+    for (final candidate in candidates) {
+      if (candidate.points.isEmpty ||
+          (candidate.branchId == current.branchId &&
+              candidate.bounds == current.bounds))
+        continue;
+      final first = (candidate.points.first - foot).distance;
+      final last = (candidate.points.last - foot).distance;
+      if (math.min(first, last) > 6) continue;
+      final points = first <= last
+          ? candidate.points
+          : candidate.points.reversed.toList();
+      neighbors.add(
+        GardenRoute([foot, ...points], candidate.bounds, candidate.branchId),
+      );
+    }
+    if (neighbors.isEmpty) return;
+    setState(
+      () => personRoutes[index] = neighbors[random.nextInt(neighbors.length)],
+    );
+  }
+
+  Widget _person(int index, GardenRoute route, Map<int, Offset> positions) {
+    final drag = personDrag.putIfAbsent(
+      index,
+      () => ValueNotifier<Offset?>(null),
+    );
+    return ValueListenableBuilder<Offset?>(
+      valueListenable: drag,
+      builder: (context, foot, _) => AnimatedBuilder(
+        animation: transformation,
+        builder: (context, _) => GardenPerson(
+          key: ValueKey('garden-person-$index'),
+          index: index,
+          route: route,
+          sceneBounds: const Rect.fromLTWH(0, 0, 6000, 6000),
+          dragFoot: foot,
+          hitSize:
+              (44 /
+                      math
+                          .sqrt(
+                            math.pow(transformation.value.storage[0], 2) +
+                                math.pow(transformation.value.storage[1], 2),
+                          )
+                          .clamp(.05, 2.5))
+                  .clamp(44, 220)
+                  .toDouble(),
+          restSpots: gardenRestSpots(positions),
+          onDragStart: () {},
+          onDragUpdate: (global) {
+            final point = _scenePoint(global);
+            if (point != null) drag.value = point;
+          },
+          onDragEnd: (global) {
+            final scene = _scenePoint(global) ?? drag.value;
+            if (scene == null) {
+              drag.value = null;
+              return;
+            }
+            final drop = _safePersonDrop(scene, positions);
+            drag.value = drop;
+            setState(() => personRoutes[index] = gardenStationaryRoute(drop));
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) drag.value = null;
+            });
+          },
+          onRouteRequested: (foot) =>
+              _requestPersonRoute(index, foot, positions, route),
+        ),
+      ),
+    );
+  }
+
   Future<void> edit({int? id, int? parent, Offset? position}) async {
     final existing = id == null
-        ? ''
-        : items.firstWhere((e) => e['id'] == id)['text'] as String;
-    final text = await showDialog<String>(
+        ? <String, Object?>{}
+        : items.firstWhere((e) => e['id'] == id);
+    final result = await showDialog<(String, String, String, String?)>(
       context: context,
-      builder: (c) => _BranchDialog(initial: existing, isNew: id == null),
+      builder: (c) => _BranchDialog(
+        initial: existing['text'] as String? ?? '',
+        initialTitle: existing['title'] as String? ?? '',
+        initialRich: existing['rich_text'] as String?,
+        initialInk: existing['ink'] as String?,
+        isNew: id == null,
+      ),
     );
-    if (text == null || text.isEmpty) return;
+    final text = result?.$2 ?? '';
+    if (result == null ||
+        (text.isEmpty &&
+            result.$1.isEmpty &&
+            (result.$4 == null || result.$4 == '[]')))
+      return;
     if (id == null) {
       Offset? placement = position;
       if (placement == null &&
@@ -259,15 +395,30 @@ class _MemoTreeState extends State<MemoTree>
           }
         }
       }
-      await widget.store.addBranch(
+      final newId = await widget.store.addBranch(
         widget.memoId,
         text,
         parentId: parent,
         x: placement?.dx,
         y: placement?.dy,
       );
+      await widget.store.saveBranchContent(
+        widget.memoId,
+        newId,
+        result!.$1,
+        text,
+        result.$3,
+        ink: result.$4,
+      );
     } else {
-      await widget.store.renameBranch(widget.memoId, id, text);
+      await widget.store.saveBranchContent(
+        widget.memoId,
+        id,
+        result!.$1,
+        text,
+        result.$3,
+        ink: result.$4,
+      );
     }
     if (parent != null) collapsed.remove(parent);
     await load();
@@ -515,6 +666,7 @@ class _MemoTreeState extends State<MemoTree>
               ),
               Expanded(
                 child: InkWell(
+                  key: const ValueKey('branch-preview-edit'),
                   onTap: () => Navigator.pop(sheetContext, 'edit'),
                   borderRadius: BorderRadius.circular(24),
                   child: Padding(
@@ -523,13 +675,19 @@ class _MemoTreeState extends State<MemoTree>
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            item['text'] as String,
-                            textAlign: TextAlign.center,
-                            style: Theme.of(
-                              sheetContext,
-                            ).textTheme.headlineSmall,
+                          if ((item['title'] as String? ?? '').isNotEmpty)
+                            Text(
+                              item['title'] as String,
+                              style: Theme.of(
+                                sheetContext,
+                              ).textTheme.titleLarge,
+                            ),
+                          _BranchPreview(
+                            text: item['text'] as String,
+                            rich: item['rich_text'] as String?,
                           ),
+                          if (item['ink'] is String)
+                            InkPreview(data: item['ink'] as String),
                         ],
                       ),
                     ),
@@ -611,7 +769,9 @@ class _MemoTreeState extends State<MemoTree>
                         ? 75
                         : 150,
                     child: Text(
-                      item['text'] as String,
+                      (item['title'] as String? ?? '').isNotEmpty
+                          ? item['title'] as String
+                          : item['text'] as String,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
@@ -655,6 +815,7 @@ class _MemoTreeState extends State<MemoTree>
                 children: [
                   Positioned.fill(
                     child: InteractiveViewer(
+                      key: graphKey,
                       transformationController: transformation,
                       onInteractionStart: (_) => fitAnimation.stop(),
                       trackpadScrollCausesScale: true,
@@ -700,12 +861,11 @@ class _MemoTreeState extends State<MemoTree>
                               for (final entry in _characterPositions(
                                 displayPositions,
                               ).indexed)
-                                Positioned(
-                                  left: entry.$2.dx,
-                                  top: entry.$2.dy,
-                                  child: GardenPerson(
-                                    key: ValueKey('garden-person-${entry.$1}'),
-                                    index: entry.$1,
+                                Positioned.fill(
+                                  child: _person(
+                                    entry.$1,
+                                    personRoutes[entry.$1] ?? entry.$2,
+                                    displayPositions,
                                   ),
                                 ),
                             if (displayPositions.containsKey(0))
@@ -817,34 +977,17 @@ class _MemoTreeState extends State<MemoTree>
     );
   }
 
-  List<Offset> _characterPositions(Map<int, Offset> positions) {
+  List<GardenRoute> _characterPositions(Map<int, Offset> positions) {
     if (items.isEmpty) return [];
     final count = (1 + (items.length - 1) ~/ 3).clamp(1, 5);
-    final occupied = positions.values
-        .map((p) => Rect.fromLTWH(p.dx - 8, p.dy - 8, 190, 102))
-        .toList();
-    final result = <Offset>[];
-    for (final item in items) {
-      final origin = positions[item['id']];
-      if (origin == null) continue;
-      for (final offset in const [
-        Offset(185, -110),
-        Offset(-82, -110),
-        Offset(185, 92),
-        Offset(-82, 92),
-      ]) {
-        final p = origin + offset;
-        final rect = Rect.fromLTWH(p.dx, p.dy, 72, 123);
-        if (p.dx < 0 || p.dy < 0 || p.dx + 72 > 6000 || p.dy + 123 > 6000)
-          continue;
-        if (occupied.any((other) => other.overlaps(rect))) continue;
-        occupied.add(rect.inflate(8));
-        result.add(p);
-        break;
-      }
-      if (result.length == count) break;
-    }
-    return result;
+    final routes = gardenRoutes(items, positions, limit: count);
+    return [
+      for (var i = 0; i < count; i++)
+        if (personRoutes[i] != null)
+          personRoutes[i]!
+        else if (i < routes.length)
+          routes[i],
+    ];
   }
 }
 
@@ -958,18 +1101,95 @@ class _DiamondBorder extends ShapeBorder {
   ShapeBorder scale(double t) => _DiamondBorder(side.scale(t));
 }
 
+class _BranchPreview extends StatefulWidget {
+  const _BranchPreview({required this.text, required this.rich});
+  final String text;
+  final String? rich;
+  @override
+  State<_BranchPreview> createState() => _BranchPreviewState();
+}
+
+class _BranchPreviewState extends State<_BranchPreview> {
+  late final quill.QuillController controller;
+  @override
+  void initState() {
+    super.initState();
+    quill.Document doc;
+    try {
+      doc = widget.rich == null
+          ? quill.Document()
+          : quill.Document.fromJson(jsonDecode(widget.rich!) as List);
+      if (widget.rich == null && widget.text.isNotEmpty)
+        doc.insert(0, widget.text);
+    } catch (_) {
+      doc = quill.Document();
+      if (widget.text.isNotEmpty) doc.insert(0, widget.text);
+    }
+    controller = quill.QuillController(
+      document: doc,
+      selection: const TextSelection.collapsed(offset: 0),
+      readOnly: true,
+    );
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+    child: quill.QuillEditor.basic(
+      controller: controller,
+      config: const quill.QuillEditorConfig(scrollable: false),
+    ),
+  );
+}
+
 class _BranchDialog extends StatefulWidget {
-  const _BranchDialog({required this.initial, required this.isNew});
-  final String initial;
+  const _BranchDialog({
+    required this.initial,
+    required this.initialTitle,
+    required this.initialRich,
+    required this.initialInk,
+    required this.isNew,
+  });
+  final String initial, initialTitle;
+  final String? initialRich, initialInk;
   final bool isNew;
   @override
   State<_BranchDialog> createState() => _BranchDialogState();
 }
 
 class _BranchDialogState extends State<_BranchDialog> {
-  late final controller = TextEditingController(text: widget.initial);
+  late final title = TextEditingController(text: widget.initialTitle);
+  late final quill.QuillController controller;
+  late final _BranchInkBuffer ink = _BranchInkBuffer(widget.initialInk);
+  bool handwriting = false;
+  @override
+  void initState() {
+    super.initState();
+    quill.Document document;
+    try {
+      document = widget.initialRich == null
+          ? quill.Document()
+          : quill.Document.fromJson(jsonDecode(widget.initialRich!) as List);
+      if (widget.initialRich == null && widget.initial.isNotEmpty)
+        document.insert(0, widget.initial);
+    } catch (_) {
+      document = quill.Document();
+      if (widget.initial.isNotEmpty) document.insert(0, widget.initial);
+    }
+    controller = quill.QuillController(
+      document: document,
+      selection: const TextSelection.collapsed(offset: 0),
+    );
+  }
+
   @override
   void dispose() {
+    title.dispose();
     controller.dispose();
     super.dispose();
   }
@@ -985,7 +1205,7 @@ class _BranchDialogState extends State<_BranchDialog> {
                   24)
               .clamp(0.0, 560.0),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -993,21 +1213,63 @@ class _BranchDialogState extends State<_BranchDialog> {
               widget.isNew ? tr(context, '가지 추가') : tr(context, '가지 수정'),
               style: Theme.of(context).textTheme.titleLarge,
             ),
-            const SizedBox(height: 12),
+            TextField(
+              controller: title,
+              maxLength: 80,
+              decoration: InputDecoration(hintText: tr(context, '노드 제목')),
+            ),
             Expanded(
-              child: TextField(
-                controller: controller,
-                autofocus: true,
-                keyboardType: TextInputType.multiline,
-                textInputAction: TextInputAction.newline,
-                expands: true,
-                maxLines: null,
-                maxLength: 200,
-                textAlignVertical: TextAlignVertical.top,
-                decoration: InputDecoration(
-                  hintText: tr(context, '생각을 적어 보세요'),
+              child: handwriting
+                  ? HandwritingPad(
+                      store: ink,
+                      memoId: 0,
+                      onUseText: (text, _) async {
+                        final at = controller.document.length - 1;
+                        final insertion = '${at > 0 ? '\n' : ''}$text';
+                        controller.replaceText(
+                          at,
+                          0,
+                          insertion,
+                          TextSelection.collapsed(
+                            offset: at + insertion.length,
+                          ),
+                        );
+                        if (mounted) setState(() => handwriting = false);
+                      },
+                    )
+                  : quill.QuillEditor.basic(
+                      controller: controller,
+                      config: quill.QuillEditorConfig(
+                        placeholder: tr(context, '생각을 적어 보세요'),
+                        padding: const EdgeInsets.all(12),
+                      ),
+                    ),
+            ),
+            Row(
+              children: [
+                IconButton(
+                  tooltip: tr(context, handwriting ? '키보드 입력' : '손글씨'),
+                  onPressed: () => setState(() => handwriting = !handwriting),
+                  icon: Icon(
+                    handwriting ? Icons.keyboard_outlined : Icons.gesture,
+                  ),
                 ),
-              ),
+                if (!handwriting)
+                  Expanded(
+                    child: TextFieldTapRegion(
+                      child: quill.QuillSimpleToolbar(
+                        controller: controller,
+                        config: const quill.QuillSimpleToolbarConfig(
+                          multiRowsDisplay: false,
+                          showInlineCode: false,
+                          showCodeBlock: false,
+                          showSubscript: false,
+                          showSuperscript: false,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -1016,10 +1278,19 @@ class _BranchDialogState extends State<_BranchDialog> {
                   onPressed: () => Navigator.pop(context),
                   child: Text(tr(context, '취소')),
                 ),
-                const SizedBox(width: 8),
                 FilledButton(
-                  onPressed: () =>
-                      Navigator.pop(context, controller.text.trim()),
+                  onPressed: () {
+                    final text = controller.document.toPlainText().trim();
+                    if (text.isNotEmpty ||
+                        title.text.trim().isNotEmpty ||
+                        (ink.value != null && ink.value != '[]'))
+                      Navigator.pop(context, (
+                        title.text.trim(),
+                        text,
+                        jsonEncode(controller.document.toDelta().toJson()),
+                        ink.value,
+                      ));
+                  },
                   child: Text(tr(context, '저장')),
                 ),
               ],
@@ -1029,4 +1300,15 @@ class _BranchDialogState extends State<_BranchDialog> {
       ),
     ),
   );
+}
+
+class _BranchInkBuffer extends Store {
+  _BranchInkBuffer(this.value);
+  String? value;
+  @override
+  Future<String?> memoInk(int id) async => value;
+  @override
+  Future<void> saveMemoInk(int id, String ink) async {
+    value = ink;
+  }
 }
