@@ -14,6 +14,7 @@ enum _Motion {
   waking,
   carried,
   dropping,
+  absent,
   landing,
   falling,
 }
@@ -30,6 +31,8 @@ class GardenPerson extends StatefulWidget {
     this.onDragUpdate,
     this.onDragEnd,
     this.landingAt,
+    this.reentryAt,
+    this.onReentry,
     this.onRouteRequested,
     this.random,
     this.hitSize = 0,
@@ -43,6 +46,8 @@ class GardenPerson extends StatefulWidget {
   final ValueChanged<Offset>? onDragUpdate;
   final ValueChanged<Offset>? onDragEnd;
   final Offset? Function(Offset)? landingAt;
+  final (Offset, Offset, Offset) Function(Offset)? reentryAt;
+  final ValueChanged<Offset>? onReentry;
   final ValueChanged<Offset>? onRouteRequested;
   @visibleForTesting
   final math.Random? random;
@@ -69,6 +74,7 @@ class _GardenPersonState extends State<GardenPerson>
   Offset? lastGlobal;
   bool reduced = false,
       startled = false,
+      returningAfterFall = false,
       atNode = false,
       returningFromSeat = false,
       firstWalk = true;
@@ -141,7 +147,24 @@ class _GardenPersonState extends State<GardenPerson>
       if (status != AnimationStatus.completed || !mounted) return;
       if (motion == _Motion.dropping) {
         heldFoot = dropTarget;
-        finishLanding();
+        if (returningAfterFall) {
+          setState(() => motion = _Motion.absent);
+          actionEnd = Timer(const Duration(seconds: 3), () {
+            if (!mounted || lastGlobal == null || widget.reentryAt == null)
+              return;
+            final (_, start, landing) = widget.reentryAt!(lastGlobal!);
+            widget.onReentry?.call(landing);
+            setState(() {
+              returningAfterFall = false;
+              heldFoot = start;
+              dropTarget = landing;
+              motion = _Motion.dropping;
+            });
+            startDropAnimation();
+          });
+        } else {
+          finishLanding();
+        }
       } else if (motion == _Motion.approaching) {
         if (returningFromSeat) {
           setState(() {
@@ -289,9 +312,8 @@ class _GardenPersonState extends State<GardenPerson>
   }
 
   // Finish on the same frame as the standing pose, even for short walks.
-  Duration walkingDuration(int milliseconds) => Duration(
-    milliseconds: math.max(1, (milliseconds / 1000).round()) * 1000,
-  );
+  Duration walkingDuration(int milliseconds) =>
+      Duration(milliseconds: math.max(1, (milliseconds / 1000).round()) * 1000);
 
   void animateFrames(
     _Motion state, {
@@ -409,26 +431,39 @@ class _GardenPersonState extends State<GardenPerson>
   void endDrag(Offset global) {
     frameTimer?.cancel();
     heldFoot = widget.dragFoot ?? heldFoot;
-    dropTarget = widget.landingAt?.call(global) ?? heldFoot;
+    lastGlobal = global;
+    final landing = widget.landingAt?.call(global);
+    final recovery = landing == null ? widget.reentryAt?.call(global) : null;
+    dropTarget = landing ?? recovery?.$1 ?? heldFoot;
     widget.onDragEnd?.call(global);
     if (reduced) {
+      if (recovery != null) widget.onReentry?.call(recovery.$3);
       setState(() => motion = _Motion.idle);
       scheduleNext();
       return;
     }
+    returningAfterFall = recovery != null;
     final distance = ((dropTarget?.dy ?? 0) - (heldFoot?.dy ?? 0));
     if (distance > 4) {
       setState(() {
         motion = _Motion.dropping;
       });
-      walk.duration = Duration(
-        milliseconds: (300 + math.sqrt(distance) * 55).round().clamp(300, 1800),
-      );
-      walk.forward(from: 0);
+      startDropAnimation();
       return;
     }
     heldFoot = dropTarget;
     finishLanding();
+  }
+
+  void startDropAnimation() {
+    final distance = ((dropTarget?.dy ?? 0) - (heldFoot?.dy ?? 0));
+    walk.duration = Duration(
+      milliseconds: (300 + math.sqrt(math.max(0, distance)) * 55).round().clamp(
+        300,
+        1800,
+      ),
+    );
+    walk.forward(from: 0);
   }
 
   void finishLanding() {
@@ -461,6 +496,7 @@ class _GardenPersonState extends State<GardenPerson>
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: Listenable.merge([walk, surprise]),
     builder: (context, _) {
+      if (motion == _Motion.absent) return const SizedBox.shrink();
       final moving =
           walk.isAnimating &&
           {_Motion.walking, _Motion.approaching}.contains(motion) &&
@@ -735,17 +771,30 @@ class _GardenPersonState extends State<GardenPerson>
     );
     // Render a single complete frame to avoid detached or doubled limbs.
     final image = sprite(frame);
-    final isWalking = walk.isAnimating &&
-        (motion == _Motion.walking || motion == _Motion.approaching) && !reduced;
+    final isWalking =
+        walk.isAnimating &&
+        (motion == _Motion.walking || motion == _Motion.approaching) &&
+        !reduced;
     final swing = isWalking
-        ? math.sin((walk.lastElapsedDuration?.inMicroseconds ?? 0) *
-            2 * math.pi / 1000000)
+        ? math.sin(
+            (walk.lastElapsedDuration?.inMicroseconds ?? 0) *
+                2 *
+                math.pi /
+                1000000,
+          )
         : 0.0;
-    final person = Stack(fit: StackFit.expand, children: [
-      CustomPaint(painter: _StraightWalkingArm(swing, widget.index, foreground: false)),
-      image,
-      CustomPaint(painter: _StraightWalkingArm(swing, widget.index, foreground: true)),
-    ]);
+    final person = Stack(
+      fit: StackFit.expand,
+      children: [
+        CustomPaint(
+          painter: _StraightWalkingArm(swing, widget.index, foreground: false),
+        ),
+        image,
+        CustomPaint(
+          painter: _StraightWalkingArm(swing, widget.index, foreground: true),
+        ),
+      ],
+    );
     if (!walkingLeft) return person;
     return Transform.flip(
       key: ValueKey('garden-facing-left-${widget.index}'),
@@ -825,19 +874,25 @@ class _StraightWalkingArm extends CustomPainter {
     );
     final angle = foreground ? .12 - swing * .55 : .38 + swing * .35;
     final length = size.height * .105;
-    final hand = shoulder + Offset(math.sin(angle) * length, math.cos(angle) * length);
+    final hand =
+        shoulder + Offset(math.sin(angle) * length, math.cos(angle) * length);
     final outline = Paint()
       ..color = const Color(0xff72564a)
       ..strokeWidth = size.width * .035
       ..strokeCap = StrokeCap.round;
     canvas.drawLine(shoulder, hand, outline);
     canvas.drawCircle(hand, size.width * .038, outline);
-    canvas.drawCircle(hand, size.width * .024, Paint()..color = const Color(0xffa27f68));
+    canvas.drawCircle(
+      hand,
+      size.width * .024,
+      Paint()..color = const Color(0xffa27f68),
+    );
   }
 
   @override
   bool shouldRepaint(covariant _StraightWalkingArm oldDelegate) =>
-      oldDelegate.swing != swing || oldDelegate.index != index ||
+      oldDelegate.swing != swing ||
+      oldDelegate.index != index ||
       oldDelegate.foreground != foreground;
 }
 

@@ -303,20 +303,67 @@ class _MemoTreeState extends State<MemoTree>
               drag.value = null;
               return;
             }
-            final landing = gardenLandingPoint(scene, items, positions);
-            setState(
-              () => personRoutes[index] = gardenStationaryRoute(landing),
+            final landing = gardenLandingPoint(
+              scene,
+              items,
+              positions,
+              floor: double.infinity,
             );
+            if (landing.dy.isFinite) {
+              setState(
+                () => personRoutes[index] = gardenStationaryRoute(landing),
+              );
+            }
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) drag.value = null;
             });
           },
           landingAt: (global) {
             final scene = _scenePoint(global);
-            return scene == null
-                ? null
-                : gardenLandingPoint(scene, items, positions);
+            if (scene == null) return null;
+            final landing = gardenLandingPoint(
+              scene,
+              items,
+              positions,
+              floor: double.infinity,
+            );
+            return landing.dy.isFinite ? landing : null;
           },
+          reentryAt: (global) {
+            final release =
+                _scenePoint(global) ?? drag.value ?? route.points.first;
+            final view = Rect.fromPoints(
+              transformation.toScene(Offset.zero),
+              transformation.toScene(
+                Offset(graphViewport.width, graphViewport.height),
+              ),
+            );
+            final spots =
+                gardenRestSpots(
+                  positions,
+                ).where((spot) => view.contains(spot)).toList()..sort(
+                  (a, b) => (a - view.center).distanceSquared.compareTo(
+                    (b - view.center).distanceSquared,
+                  ),
+                );
+            final landing = spots.isNotEmpty
+                ? spots.first
+                : Offset(view.center.dx, view.bottom - gardenSpriteHeight);
+            return (
+              Offset(
+                release.dx,
+                math.max(
+                  release.dy + gardenSpriteHeight,
+                  view.bottom + gardenSpriteHeight,
+                ),
+              ),
+              Offset(landing.dx, view.top - gardenSpriteHeight),
+              landing,
+            );
+          },
+          onReentry: (landing) => setState(
+            () => personRoutes[index] = gardenStationaryRoute(landing),
+          ),
           onRouteRequested: (foot) =>
               _requestPersonRoute(index, foot, positions, route),
         ),

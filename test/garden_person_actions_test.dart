@@ -12,7 +12,11 @@ class FixedRandom implements math.Random {
   @override
   double nextDouble() => value;
   @override
-  int nextInt(int max) => max == 3 ? choice : max == 121 ? sleepOffset : 0;
+  int nextInt(int max) => max == 3
+      ? choice
+      : max == 121
+      ? sleepOffset
+      : 0;
   @override
   bool nextBool() => false;
 }
@@ -29,6 +33,53 @@ Finder pose(String name) => find.byWidgetPredicate(
 );
 
 void main() {
+  testWidgets('a person dropped into empty space returns from above', (
+    tester,
+  ) async {
+    Offset? returnedTo;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GardenPerson(
+            index: 0,
+            route: route(),
+            random: FixedRandom(.8),
+            onDragStart: () {},
+            onDragUpdate: (_) {},
+            onDragEnd: (_) {},
+            landingAt: (_) => null,
+            reentryAt: (_) => (
+              const Offset(100, 400),
+              const Offset(140, -50),
+              const Offset(140, 160),
+            ),
+            onReentry: (point) => returnedTo = point,
+          ),
+        ),
+      ),
+    );
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('garden-step-2'))),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
+    await tester.pump();
+    expect(pose('dropping'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1800));
+    await tester.pump();
+    expect(pose('dropping'), findsNothing);
+    expect(returnedTo, isNull);
+    await tester.pump(const Duration(milliseconds: 2999));
+    expect(returnedTo, isNull);
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pump();
+    expect(returnedTo, const Offset(140, 160));
+    expect(pose('dropping'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1800));
+    await tester.pump();
+    expect(pose('landing'), findsOneWidget);
+  });
+
   testWidgets('sitting renders each character frame as a single image', (
     tester,
   ) async {
@@ -181,13 +232,21 @@ void main() {
     expect(find.byKey(const ValueKey('garden-step-2')), findsOneWidget);
   });
 
-  testWidgets('sleep lasts at least a minute and tapping wakes immediately', (tester) async {
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: GardenPerson(
-      index: 1,
-      route: route(),
-      random: FixedRandom(.1, choice: 2, sleepOffset: 30),
-      restSpots: const [Offset(185, 120)],
-    ))));
+  testWidgets('sleep lasts at least a minute and tapping wakes immediately', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GardenPerson(
+            index: 1,
+            route: route(),
+            random: FixedRandom(.1, choice: 2, sleepOffset: 30),
+            restSpots: const [Offset(185, 120)],
+          ),
+        ),
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 1100));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 4100));

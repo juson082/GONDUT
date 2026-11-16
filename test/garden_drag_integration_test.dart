@@ -26,6 +26,62 @@ class _GraphStore extends Store {
 }
 
 void main() {
+  testWidgets('a person dropped in empty space returns to the visible graph', (
+    tester,
+  ) async {
+    final store = _GraphStore();
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('ko'),
+        supportedLocales: const [Locale('ko')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          quill.FlutterQuillLocalizations.delegate,
+        ],
+        home: Scaffold(body: MemoTree(store: store, memoId: 1)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final person = tester.widget<GardenPerson>(find.byType(GardenPerson));
+    final bounds = tester.getRect(find.byType(InteractiveViewer));
+    Offset? empty;
+    for (final x in [10.0, bounds.width - 10]) {
+      final candidate = bounds.topLeft + Offset(x, bounds.height / 2);
+      if (person.landingAt!(candidate) == null) {
+        empty = candidate;
+        break;
+      }
+    }
+    expect(empty, isNotNull);
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.bySemanticsLabel('소인 캐릭터')),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.moveTo(empty!);
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1800));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+    final returned = tester.widget<GardenPerson>(find.byType(GardenPerson));
+    expect(returned.route.branchId, -1);
+    expect(returned.route.points.single.dy, anyOf(2550.0, 2800.0));
+    final viewer = tester.widget<InteractiveViewer>(
+      find.byType(InteractiveViewer),
+    );
+    final position = MatrixUtils.transformPoint(
+      viewer.transformationController!.value,
+      returned.route.points.single,
+    );
+    expect((Offset.zero & bounds.size).contains(position), isTrue);
+    expect(store.rows.single['x'], 2800.0);
+    expect(store.rows.single['y'], 2550.0);
+  });
+
   testWidgets('dropping onto a node lands above its text', (tester) async {
     final store = _GraphStore();
     await tester.pumpWidget(
