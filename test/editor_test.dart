@@ -5,6 +5,7 @@ import 'package:memo_graph/main.dart';
 import 'package:memo_graph/store.dart';
 import 'package:memo_graph/paper_theme.dart';
 import 'package:memo_graph/memo_tree.dart';
+import 'package:memo_graph/plant_lines.dart';
 import 'package:memo_graph/tree_preview.dart';
 import 'package:memo_graph/garden_person.dart';
 import 'package:memo_graph/handwriting_pad.dart';
@@ -186,6 +187,58 @@ class SelectedDraftStore extends MemoryStore {
 }
 
 void main() {
+  testWidgets('drag preview matches the parent saved on drop', (tester) async {
+    final store = MemoryStore()..showCharacters = false;
+    store.treeItems.addAll([
+      {
+        'id': 1,
+        'memo_id': 1,
+        'parent_id': null,
+        'text': 'moving',
+        'position': 1,
+        'x': 2550.0,
+        'y': 2800.0,
+      },
+      {
+        'id': 2,
+        'memo_id': 1,
+        'parent_id': null,
+        'text': 'target',
+        'position': 2,
+        'x': 3100.0,
+        'y': 2800.0,
+      },
+    ]);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('ko'),
+        supportedLocales: const [Locale('ko')],
+        localizationsDelegates: [
+          ...GlobalMaterialLocalizations.delegates,
+          quill.FlutterQuillLocalizations.delegate,
+        ],
+        home: Scaffold(body: MemoTree(store: store, memoId: 1)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final start = tester.getCenter(find.text('moving'));
+    final destination = tester.getCenter(find.text('target'));
+    final gesture = await tester.startGesture(start);
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.moveTo(destination);
+    await tester.pump();
+    final lines = tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((widget) => widget.painter)
+        .whereType<TreeLines>()
+        .single;
+    expect(lines.previewChildId, 1);
+    expect(lines.previewParentId, 2);
+    expect(store.treeItems.first['parent_id'], isNull);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(store.treeItems.first['parent_id'], 2);
+  });
   testWidgets('home can create a graph directly', (tester) async {
     final store = MemoryStore();
     await tester.pumpWidget(MemoApp(store));

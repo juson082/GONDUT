@@ -10,6 +10,40 @@ GardenRoute route() => const GardenRoute(
 );
 
 void main() {
+  testWidgets('stationary route never flips the fifth person', (tester) async {
+    const still = GardenRoute(
+      [Offset(45, 65), Offset(45, 65)],
+      Rect.fromLTWH(0, 0, 100, 100),
+      11,
+    );
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: GardenPerson(index: 4, route: still)),
+    ));
+    await tester.pump(const Duration(milliseconds: 1100));
+    for (var i = 0; i < 24; i++) {
+      await tester.pump(const Duration(milliseconds: 125));
+      expect(find.byKey(const ValueKey('garden-facing-left-4')), findsNothing);
+    }
+  });
+  testWidgets('people face left while walking left', (tester) async {
+    const leftRoute = GardenRoute(
+      [Offset(180, 120), Offset(100, 120)],
+      Rect.fromLTRB(80, 60, 210, 145),
+      10,
+    );
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: GardenPerson(index: 4, route: leftRoute)),
+    ));
+    await tester.pump(const Duration(milliseconds: 1200));
+    await tester.pump(const Duration(milliseconds: 140));
+    expect(find.byKey(const ValueKey('garden-facing-left-4')), findsOneWidget);
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: GardenPerson(index: 0, route: leftRoute)),
+    ));
+    await tester.pump(const Duration(milliseconds: 1200));
+    await tester.pump(const Duration(milliseconds: 140));
+    expect(find.byKey(const ValueKey('garden-facing-left-0')), findsOneWidget);
+  });
   testWidgets('walker follows a curved route with eight different steps', (
     tester,
   ) async {
@@ -41,6 +75,7 @@ void main() {
     await tester.pump();
     expect(find.byKey(const ValueKey('garden-pose-surprised')), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 900));
+    await tester.pump(const Duration(milliseconds: 200));
     expect(find.byKey(const ValueKey('garden-pose-surprised')), findsNothing);
   });
   test(

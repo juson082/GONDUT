@@ -3,6 +3,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:memo_graph/garden_routes.dart';
 
 void main() {
+  test('a release above a node falls to its upper edge', () {
+    final positions = {1: const Offset(100, 200)};
+    expect(
+      gardenLandingPoint(const Offset(150, 80), [], positions),
+      const Offset(150, 200),
+    );
+    expect(
+      gardenLandingPoint(const Offset(150, 220), [], positions),
+      const Offset(150, 200),
+    );
+    expect(
+      gardenLandingPoint(const Offset(500, 80), [], positions, floor: 800),
+      const Offset(500, 800),
+    );
+  });
   test(
     'a user drop keeps its exact coordinates and cannot alter graph nodes',
     () {
@@ -13,9 +28,9 @@ void main() {
       expect(route.bounds.contains(drop), isTrue);
     },
   );
-  test('rest spots sit on the left and right edge of each node', () {
+  test('rest spots sit at the center of the upper edge of each node', () {
     final spots = gardenRestSpots({1: const Offset(100, 200)});
-    expect(spots, [const Offset(122, 200), const Offset(252, 200)]);
+    expect(spots, [const Offset(187, 200)]);
   });
   test(
     'overlapping route candidates can be explored without changing stored geometry',

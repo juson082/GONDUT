@@ -38,6 +38,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 499));
     expect(pose, findsOneWidget);
     await tester.pump(const Duration(milliseconds: 2));
+    await tester.pump(const Duration(milliseconds: 200));
     expect(pose, findsNothing);
   });
 

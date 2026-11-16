@@ -5,12 +5,14 @@ import 'package:memo_graph/garden_person.dart';
 import 'package:memo_graph/garden_routes.dart';
 
 class FixedRandom implements math.Random {
-  FixedRandom(this.value);
+  FixedRandom(this.value, {this.choice = 0, this.sleepOffset = 0});
   final double value;
+  final int choice;
+  final int sleepOffset;
   @override
   double nextDouble() => value;
   @override
-  int nextInt(int max) => 0;
+  int nextInt(int max) => max == 3 ? choice : max == 121 ? sleepOffset : 0;
   @override
   bool nextBool() => false;
 }
@@ -27,6 +29,72 @@ Finder pose(String name) => find.byWidgetPredicate(
 );
 
 void main() {
+  testWidgets('sitting renders each character frame as a single image', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GardenPerson(
+            index: 1,
+            route: route(),
+            random: FixedRandom(.2, choice: 1),
+            restSpots: const [Offset(185, 120)],
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 1100));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 4100));
+    await tester.pump(const Duration(milliseconds: 710));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1000));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('garden-step-2')), findsOneWidget);
+    for (var i = 0; i < 120 && pose('sitting').evaluate().isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(pose('sitting'), findsOneWidget);
+    expect(
+      find.descendant(of: pose('sitting'), matching: find.byType(Image)),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(pose('sitting'), findsOneWidget);
+    expect(
+      find.descendant(of: pose('sitting'), matching: find.byType(Image)),
+      findsOneWidget,
+    );
+  });
+  testWidgets('a character falls before playing the landing animation', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GardenPerson(
+            index: 0,
+            route: route(),
+            random: FixedRandom(.8),
+            onDragStart: () {},
+            onDragUpdate: (_) {},
+            onDragEnd: (_) {},
+            landingAt: (_) => const Offset(100, 260),
+          ),
+        ),
+      ),
+    );
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('garden-step-2'))),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.up();
+    await tester.pump();
+    expect(pose('dropping'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1200));
+    expect(pose('landing'), findsOneWidget);
+  });
   testWidgets('long press carries the person and a drop can trigger a fall', (
     tester,
   ) async {
@@ -63,6 +131,7 @@ void main() {
     expect(dropped, isNotNull);
     expect(pose('falling'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 1100));
+    await tester.pump(const Duration(milliseconds: 200));
     expect(pose('falling'), findsNothing);
   });
 
@@ -75,7 +144,7 @@ void main() {
           body: GardenPerson(
             index: 0,
             route: route(),
-            random: FixedRandom(.1),
+            random: FixedRandom(.1, choice: 2),
             restSpots: const [Offset(185, 120)],
           ),
         ),
@@ -83,25 +152,64 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 1100));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 3700));
+    await tester.pump(const Duration(milliseconds: 4100));
     await tester.pump(const Duration(milliseconds: 710));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 1000));
     await tester.pump();
+    expect(find.byKey(const ValueKey('garden-step-2')), findsOneWidget);
+    for (var i = 0; i < 120 && pose('yawning').evaluate().isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
     expect(pose('yawning'), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 1100));
+    await tester.pump(const Duration(milliseconds: 2000));
     await tester.pump();
     expect(pose('sleeping'), findsOneWidget);
     expect(find.byKey(const ValueKey('garden-sleep-zzz')), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 5500));
+    await tester.pump(const Duration(milliseconds: 59999));
+    expect(pose('sleeping'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1));
     expect(pose('waking'), findsOneWidget);
     expect(find.byKey(const ValueKey('garden-sleep-zzz')), findsNothing);
     await tester.pump(const Duration(milliseconds: 1000));
+    await tester.pump(const Duration(milliseconds: 200));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 2100));
     await tester.pump();
     expect(pose('waking'), findsNothing);
     expect(pose('sleeping'), findsNothing);
     expect(find.byKey(const ValueKey('garden-step-2')), findsOneWidget);
+  });
+
+  testWidgets('sleep lasts at least a minute and tapping wakes immediately', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: GardenPerson(
+      index: 1,
+      route: route(),
+      random: FixedRandom(.1, choice: 2, sleepOffset: 30),
+      restSpots: const [Offset(185, 120)],
+    ))));
+    await tester.pump(const Duration(milliseconds: 1100));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 4100));
+    await tester.pump(const Duration(milliseconds: 710));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1000));
+    await tester.pump();
+    for (var i = 0; i < 120 && pose('yawning').evaluate().isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(pose('yawning'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 2100));
+    await tester.pump();
+    expect(pose('sleeping'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 61));
+    expect(pose('sleeping'), findsOneWidget);
+    await tester.tap(pose('sleeping'));
+    await tester.pump();
+    expect(pose('sleeping'), findsNothing);
+    expect(pose('waking'), findsOneWidget);
+    expect(find.byKey(const ValueKey('garden-pose-surprised')), findsNothing);
+    await tester.pump(const Duration(milliseconds: 1100));
+    expect(pose('waking'), findsNothing);
   });
 }

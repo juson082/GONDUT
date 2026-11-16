@@ -65,17 +65,12 @@ class _MemoTreeState extends State<MemoTree>
     }
     final previousParent =
         items.firstWhere((e) => e['id'] == id)['parent_id'] as int?;
-    final blocked = descendants(id);
-    final candidates =
-        visiblePositions.entries.where((e) => !blocked.contains(e.key)).toList()
-          ..sort(
-            (a, b) => (a.value - destination).distanceSquared.compareTo(
-              (b.value - destination).distanceSquared,
-            ),
-          );
-    final parent = candidates.isEmpty || candidates.first.key == 0
-        ? null
-        : candidates.first.key;
+    final target = nearestDropTarget(
+      visiblePositions,
+      descendants(id),
+      destination,
+    );
+    final parent = target == 0 ? null : target;
     final all = <int, (double, double)>{
       for (final e in visiblePositions.entries.where((e) => e.key != 0))
         e.key: (
@@ -237,25 +232,6 @@ class _MemoTreeState extends State<MemoTree>
     return Offset(point.dx.clamp(0, 6000), point.dy.clamp(0, 6000));
   }
 
-  Offset _safePersonDrop(Offset position, Map<int, Offset> positions) {
-    var foot = position;
-    // When dropped on text, land at the top of that node rather than hiding
-    // behind the text. The drop changes only the character, never the graph.
-    for (final p in positions.values) {
-      final textArea = Rect.fromLTWH(p.dx + 12, p.dy + 14, 150, 58);
-      final sprite = Rect.fromLTWH(
-        foot.dx - gardenSpriteWidth / 2,
-        foot.dy - gardenSpriteHeight * .8,
-        gardenSpriteWidth,
-        gardenSpriteHeight,
-      );
-      if (sprite.overlaps(textArea)) {
-        foot = Offset(foot.dx.clamp(p.dx + 12, p.dx + 162), p.dy);
-      }
-    }
-    return foot;
-  }
-
   void _requestPersonRoute(
     int index,
     Offset foot,
@@ -327,12 +303,19 @@ class _MemoTreeState extends State<MemoTree>
               drag.value = null;
               return;
             }
-            final drop = _safePersonDrop(scene, positions);
-            drag.value = drop;
-            setState(() => personRoutes[index] = gardenStationaryRoute(drop));
+            final landing = gardenLandingPoint(scene, items, positions);
+            setState(
+              () => personRoutes[index] = gardenStationaryRoute(landing),
+            );
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) drag.value = null;
             });
+          },
+          landingAt: (global) {
+            final scene = _scenePoint(global);
+            return scene == null
+                ? null
+                : gardenLandingPoint(scene, items, positions);
           },
           onRouteRequested: (foot) =>
               _requestPersonRoute(index, foot, positions, route),
@@ -795,6 +778,13 @@ class _MemoTreeState extends State<MemoTree>
     if (draggingId != null && dragPosition != null)
       positions[draggingId!] = dragPosition!;
     visiblePositions = positions;
+    final previewTarget =
+        draggingId != null &&
+            dragOrigin != null &&
+            dragPosition != null &&
+            (dragPosition! - dragOrigin!).distance >= 5
+        ? nearestDropTarget(positions, descendants(draggingId!), dragPosition!)
+        : null;
     const canvasWidth = 6000.0;
     const canvasHeight = 6000.0;
     return Column(
@@ -842,6 +832,13 @@ class _MemoTreeState extends State<MemoTree>
                                     Theme.of(context).colorScheme.outline,
                                     zoomScale: transformation.value.storage[0]
                                         .abs(),
+                                    previewChildId: previewTarget == null
+                                        ? null
+                                        : draggingId,
+                                    previewParentId: previewTarget,
+                                    previewColor: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
                                   ),
                                 ),
                               ),

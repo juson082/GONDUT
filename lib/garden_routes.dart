@@ -112,10 +112,52 @@ GardenRoute gardenStationaryRoute(Offset foot, {int branchId = -1}) {
   );
 }
 
-/// The feet touch an edge of the node, with the body above its text.
+/// The first node top or branch directly below the released foot.
+Offset gardenLandingPoint(
+  Offset release,
+  List<Map<String, Object?>> items,
+  Map<int, Offset> positions, {
+  double floor = 5990,
+}) {
+  var landingY = floor;
+  void consider(double y) {
+    if (y >= release.dy - 4 && y < landingY) landingY = y;
+  }
+
+  for (final p in positions.values) {
+    if (release.dx >= p.dx && release.dx <= p.dx + 174) {
+      if (release.dy >= p.dy && release.dy <= p.dy + 86) {
+        return Offset(release.dx, p.dy);
+      }
+      consider(p.dy);
+    }
+  }
+  for (final branch in buildPlantLines(items, positions)) {
+    for (final metric in branch.path.computeMetrics()) {
+      Offset? previous;
+      final steps = (metric.length / 2).ceil();
+      for (var i = 0; i <= steps; i++) {
+        final point = metric
+            .getTangentForOffset(math.min(metric.length, i * 2.0))
+            ?.position;
+        if (point != null && previous != null) {
+          final dx = point.dx - previous.dx;
+          if (dx.abs() > .001) {
+            final t = (release.dx - previous.dx) / dx;
+            if (t >= 0 && t <= 1)
+              consider(previous.dy + (point.dy - previous.dy) * t);
+          } else if ((release.dx - point.dx).abs() < 2) {
+            consider(math.max(release.dy, math.min(previous.dy, point.dy)));
+          }
+        }
+        previous = point;
+      }
+    }
+  }
+  return Offset(release.dx, math.max(release.dy, landingY));
+}
+
+/// Rest at the middle of the node's upper edge, above its text.
 List<Offset> gardenRestSpots(Map<int, Offset> positions) => [
-  for (final p in positions.values) ...[
-    Offset(p.dx + 22, p.dy),
-    Offset(p.dx + 152, p.dy),
-  ],
+  for (final p in positions.values) Offset(p.dx + 87, p.dy),
 ];
