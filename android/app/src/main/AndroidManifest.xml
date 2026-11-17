@@ -4,6 +4,7 @@
         android:label="GONDUT"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <service android:name=".HandwritingService" android:exported="false" android:process=":handwriting" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -32,6 +32,27 @@ void main() {
     final spots = gardenRestSpots({1: const Offset(100, 200)});
     expect(spots, [const Offset(187, 200)]);
   });
+  test('landing follows the visible edge of shaped nodes', () {
+    final positions = {1: const Offset(100, 200)};
+    expect(
+      gardenLandingPoint(const Offset(207, 100), [
+        {'id': 1, 'shape': 'diamond'},
+      ], positions).dy,
+      closeTo(200 + 43 * 20 / 87, .01),
+    );
+    expect(
+      gardenLandingPoint(const Offset(227, 100), [
+        {'id': 1, 'shape': 'circle'},
+      ], positions).dy,
+      greaterThan(220),
+    );
+    expect(
+      gardenLandingPoint(const Offset(120, 100), [
+        {'id': 1, 'shape': 'circle'},
+      ], positions, floor: double.infinity).dy,
+      double.infinity,
+    );
+  });
   test(
     'overlapping route candidates can be explored without changing stored geometry',
     () {

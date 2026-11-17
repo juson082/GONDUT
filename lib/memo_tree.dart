@@ -219,7 +219,7 @@ class _MemoTreeState extends State<MemoTree>
         items = next;
         // Routes attached to changed branches are recomputed; explicit drops
         // remain where the user placed them for this editor session.
-        personRoutes.removeWhere((_, route) => route.branchId >= 0);
+        personRoutes.clear();
         showCharacters = enabled;
         loading = false;
       });
@@ -229,7 +229,24 @@ class _MemoTreeState extends State<MemoTree>
     final box = graphKey.currentContext?.findRenderObject();
     if (box is! RenderBox || !box.hasSize) return null;
     final point = transformation.toScene(box.globalToLocal(global));
-    return Offset(point.dx.clamp(0, 6000), point.dy.clamp(0, 6000));
+    return point;
+  }
+
+  Rect get _visibleScene => Rect.fromPoints(
+    transformation.toScene(Offset.zero),
+    transformation.toScene(Offset(graphViewport.width, graphViewport.height)),
+  );
+
+  Offset? _visibleLanding(Offset scene, Map<int, Offset> positions) {
+    final landing = gardenLandingPoint(
+      scene,
+      items,
+      positions,
+      floor: double.infinity,
+    );
+    return landing.dy.isFinite && landing.dy <= _visibleScene.bottom
+        ? landing
+        : null;
   }
 
   void _requestPersonRoute(
@@ -303,13 +320,8 @@ class _MemoTreeState extends State<MemoTree>
               drag.value = null;
               return;
             }
-            final landing = gardenLandingPoint(
-              scene,
-              items,
-              positions,
-              floor: double.infinity,
-            );
-            if (landing.dy.isFinite) {
+            final landing = _visibleLanding(scene, positions);
+            if (landing != null) {
               setState(
                 () => personRoutes[index] = gardenStationaryRoute(landing),
               );
@@ -321,23 +333,12 @@ class _MemoTreeState extends State<MemoTree>
           landingAt: (global) {
             final scene = _scenePoint(global);
             if (scene == null) return null;
-            final landing = gardenLandingPoint(
-              scene,
-              items,
-              positions,
-              floor: double.infinity,
-            );
-            return landing.dy.isFinite ? landing : null;
+            return _visibleLanding(scene, positions);
           },
           reentryAt: (global) {
             final release =
                 _scenePoint(global) ?? drag.value ?? route.points.first;
-            final view = Rect.fromPoints(
-              transformation.toScene(Offset.zero),
-              transformation.toScene(
-                Offset(graphViewport.width, graphViewport.height),
-              ),
-            );
+            final view = _visibleScene;
             final spots =
                 gardenRestSpots(
                   positions,
@@ -435,7 +436,7 @@ class _MemoTreeState extends State<MemoTree>
       await widget.store.saveBranchContent(
         widget.memoId,
         newId,
-        result!.$1,
+        result.$1,
         text,
         result.$3,
         ink: result.$4,
@@ -444,7 +445,7 @@ class _MemoTreeState extends State<MemoTree>
       await widget.store.saveBranchContent(
         widget.memoId,
         id,
-        result!.$1,
+        result.$1,
         text,
         result.$3,
         ink: result.$4,
@@ -746,7 +747,7 @@ class _MemoTreeState extends State<MemoTree>
     }
   }
 
-  Widget node(Map<String, Object?> item, {required double controlOpacity}) {
+  Widget node(Map<String, Object?> item, {required double zoom}) {
     final id = item['id'] as int;
     return NotebookPress(
       child: GestureDetector(
@@ -773,14 +774,14 @@ class _MemoTreeState extends State<MemoTree>
               : const Duration(milliseconds: 140),
           child: Material(
             elevation: draggingId == id ? 5 : 0,
-            color: Theme.of(context).colorScheme.surfaceContainerLowest
-                .withValues(alpha: .85 * controlOpacity),
+            color: Theme.of(
+              context,
+            ).colorScheme.surfaceContainerLowest.withValues(alpha: .85),
             shape: branchShape(
               item['shape'] as String? ?? 'rounded',
               BorderSide(
-                color: Theme.of(
-                  context,
-                ).colorScheme.outlineVariant.withValues(alpha: controlOpacity),
+                color: Theme.of(context).colorScheme.outlineVariant,
+                width: math.max(1, .8 / zoom.clamp(.05, 2.5)),
               ),
             ),
             child: SizedBox(
@@ -822,6 +823,7 @@ class _MemoTreeState extends State<MemoTree>
     if (loading) return Center(child: CircularProgressIndicator());
     final layout = layoutPlant(items, collapsed);
     final positions = placePlantNodes(items, layout, rootPosition);
+    positions.remove(0);
     if (draggingId != null && dragPosition != null)
       positions[draggingId!] = dragPosition!;
     visiblePositions = positions;
@@ -845,7 +847,18 @@ class _MemoTreeState extends State<MemoTree>
               if (!fittedInitially) {
                 fittedInitially = true;
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) fitGraph(constraints.biggest);
+                  if (!mounted) return;
+                  if (positions.isEmpty) {
+                    transformation.value = Matrix4.identity()
+                      ..translateByDouble(
+                        constraints.maxWidth / 2 - rootPosition.dx - 87,
+                        constraints.maxHeight / 2 - rootPosition.dy - 43,
+                        0,
+                        1,
+                      );
+                  } else {
+                    fitGraph(constraints.biggest);
+                  }
                 });
               }
               return Stack(
@@ -893,12 +906,15 @@ class _MemoTreeState extends State<MemoTree>
                             Positioned.fill(
                               child: GestureDetector(
                                 behavior: HitTestBehavior.translucent,
-                                onDoubleTapDown: (details) =>
+                                onDoubleTapDown: items.isEmpty ? null : (details) =>
                                     doubleTapPosition = details.localPosition,
-                                onDoubleTap: () {
+                                onDoubleTap: items.isEmpty ? null : () {
                                   final position = doubleTapPosition;
                                   if (position != null) addAt(position);
                                 },
+                                onTapUp: items.isEmpty
+                                    ? (details) => addAt(details.localPosition)
+                                    : null,
                               ),
                             ),
                             if (showCharacters && draggingId == null)
@@ -912,37 +928,6 @@ class _MemoTreeState extends State<MemoTree>
                                     displayPositions,
                                   ),
                                 ),
-                            if (displayPositions.containsKey(0))
-                              Positioned(
-                                left: displayPositions[0]!.dx,
-                                top: displayPositions[0]!.dy,
-                                child: DragTarget<int>(
-                                  onAcceptWithDetails: (details) async {
-                                    await widget.store.moveBranch(
-                                      widget.memoId,
-                                      details.data,
-                                      null,
-                                    );
-                                    await load();
-                                  },
-                                  builder: (context, candidates, rejected) =>
-                                      Material(
-                                        color: candidates.isNotEmpty
-                                            ? Theme.of(
-                                                context,
-                                              ).colorScheme.primaryContainer
-                                            : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(14),
-                                        child: SizedBox(
-                                          width: 174,
-                                          height: 86,
-                                          child: Center(
-                                            child: Text(tr(context, '이 메모')),
-                                          ),
-                                        ),
-                                      ),
-                                ),
-                              ),
                             for (final item in items)
                               if (displayPositions.containsKey(item['id']))
                                 Positioned(
@@ -967,12 +952,8 @@ class _MemoTreeState extends State<MemoTree>
                                       animation: transformation,
                                       builder: (context, _) => node(
                                         item,
-                                        controlOpacity:
-                                            ((transformation.value.storage[0]
-                                                            .abs() -
-                                                        .55) /
-                                                    .25)
-                                                .clamp(0.0, 1.0),
+                                        zoom: transformation.value.storage[0]
+                                            .abs(),
                                       ),
                                     ),
                                   ),
@@ -989,7 +970,7 @@ class _MemoTreeState extends State<MemoTree>
                       right: 16,
                       child: IgnorePointer(
                         child: Text(
-                          tr(context, '빈 곳을 두 번 눌러 노드를 추가하세요'),
+                          tr(context, '화면을 눌러 노드 생성'),
                           textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
@@ -1030,7 +1011,11 @@ class _MemoTreeState extends State<MemoTree>
         if (personRoutes[i] != null)
           personRoutes[i]!
         else if (i < routes.length)
-          routes[i],
+          routes[i]
+        else if (positions.isNotEmpty)
+          gardenStationaryRoute(
+            gardenRestSpots(positions)[i % positions.length],
+          ),
     ];
   }
 }

@@ -190,6 +190,7 @@ const _english = <String, String>{
   '가지를 눌러 수정 · 길게 끌어 옮기기': 'Tap a branch to edit · Press and hold to move',
   '첫 번째 생각을 가지로 추가해 보세요.': 'Add your first thought as a branch.',
   '이 메모': 'This note',
+  '화면을 눌러 노드 생성': 'Tap the screen to create a node',
   '첫 번째 가지 추가': 'Add first branch',
   '기기에서 분석 중…': 'Analyzing on device…',
   'AI 과정 초안': 'AI process draft',

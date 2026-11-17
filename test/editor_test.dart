@@ -472,8 +472,6 @@ void main() {
     await tester.pumpAndSettle();
     final canvasCenter = tester.getCenter(find.byType(InteractiveViewer));
     await tester.tapAt(canvasCenter + const Offset(110, -110));
-    await tester.pump(const Duration(milliseconds: 80));
-    await tester.tapAt(canvasCenter + const Offset(110, -110));
     await tester.pumpAndSettle();
     tester
         .widget<quill.QuillEditor>(find.byType(quill.QuillEditor).last)
@@ -848,13 +846,13 @@ void main() {
   }
 
   for (final entry in <(String, String, String)>[
-    ('ko', '빈 곳을 두 번 눌러 노드를 추가하세요', 'AI 과정 초안'),
-    ('en', 'Double-tap an empty spot to add a node', 'AI process draft'),
-    ('ja', '空いている場所をダブルタップしてノードを追加', 'AIの過程下書き'),
-    ('zh', '双击空白处添加节点', 'AI 过程草稿'),
+    ('ko', '화면을 눌러 노드 생성', 'AI 과정 초안'),
+    ('en', 'Tap the screen to create a node', 'AI process draft'),
+    ('ja', '画面をタップしてノードを作成', 'AIの過程下書き'),
+    ('zh', '点击屏幕创建节点', 'AI 过程草稿'),
     (
       'es',
-      'Toca dos veces un espacio vacío para añadir un nodo',
+      'Toca la pantalla para crear un nodo',
       'Borrador de proceso con IA',
     ),
   ]) {
@@ -878,6 +876,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text(entry.$2), findsOneWidget);
+      expect(find.text('이 메모'), findsNothing);
+      await tester.tapAt(tester.getCenter(find.byType(InteractiveViewer)));
+      await tester.pumpAndSettle();
+      expect(find.byType(quill.QuillEditor), findsOneWidget);
       expect(find.text(entry.$3), findsNothing);
       expect(tester.takeException(), isNull);
     });

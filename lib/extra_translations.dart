@@ -362,6 +362,11 @@ const _translations = <String, (String, String, String)>{
   'Write': ('文章', '文字', 'Escribir'),
   'Tree': ('ツリー', '树状图', 'Árbol'),
   'Handwriting': ('手書き', '手写', 'Manuscrito'),
+  'Tap the screen to create a node': (
+    '画面をタップしてノードを作成',
+    '点击屏幕创建节点',
+    'Toca la pantalla para crear un nodo',
+  ),
   'Formatting could not be read, so the original is read-only. Keep your backup.': (
     '書式を読み込めないため、原文を読み取り専用で表示します。バックアップを保管してください。',
     '无法读取格式，原文以只读方式显示。请保留备份。',

@@ -124,12 +124,26 @@ Offset gardenLandingPoint(
     if (y >= release.dy - 4 && y < landingY) landingY = y;
   }
 
-  for (final p in positions.values) {
-    if (release.dx >= p.dx && release.dx <= p.dx + 174) {
-      if (release.dy >= p.dy && release.dy <= p.dy + 86) {
-        return Offset(release.dx, p.dy);
+  for (final entry in positions.entries) {
+    final p = entry.value;
+    final shape = items
+        .where((item) => item['id'] == entry.key)
+        .firstOrNull?['shape'];
+    final dx = (release.dx - p.dx - 87).abs();
+    final halfWidth = shape == 'circle' ? 43.0 : 87.0;
+    if (dx <= halfWidth) {
+      final double top;
+      if (shape == 'circle') {
+        top = p.dy + 43 - math.sqrt(math.max(0, 43 * 43 - dx * dx));
+      } else if (shape == 'diamond') {
+        top = p.dy + 43 * dx / 87;
+      } else {
+        top = p.dy;
       }
-      consider(p.dy);
+      if (release.dy >= top && release.dy <= p.dy + 86) {
+        return Offset(release.dx, top);
+      }
+      consider(top);
     }
   }
   for (final branch in buildPlantLines(items, positions)) {

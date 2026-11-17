@@ -2,7 +2,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'plant_lines.dart';
 import 'plant_layout.dart';
-import 'app_strings.dart';
 
 /// Draws the actual tree positions and links, without changing saved data.
 class TreePreview extends StatelessWidget {
@@ -15,7 +14,6 @@ class TreePreview extends StatelessWidget {
         items,
         Theme.of(context).colorScheme.outline,
         Theme.of(context).textTheme.bodyMedium!,
-        tr(context, '이 메모'),
       ),
       child: const SizedBox.expand(),
     ),
@@ -23,11 +21,10 @@ class TreePreview extends StatelessWidget {
 }
 
 class _PreviewPainter extends CustomPainter {
-  _PreviewPainter(this.items, this.color, this.textStyle, this.rootLabel);
+  _PreviewPainter(this.items, this.color, this.textStyle);
   final List<Map<String, Object?>> items;
   final Color color;
   final TextStyle textStyle;
-  final String rootLabel;
   @override
   void paint(Canvas canvas, Size size) {
     if (items.isEmpty || size.isEmpty) return;
@@ -36,6 +33,7 @@ class _PreviewPainter extends CustomPainter {
       layoutPlant(items, {}),
       const Offset(2800, 2800),
     );
+    positions.remove(0);
     final bounds = positions.values;
     final left = bounds.map((p) => p.dx).reduce(math.min) - 18;
     final top = bounds.map((p) => p.dy).reduce(math.min) - 18;
@@ -58,19 +56,6 @@ class _PreviewPainter extends CustomPainter {
       color,
       zoomScale: scale,
     ).paint(canvas, const Size(6000, 6000));
-    final rootText = TextPainter(
-      text: TextSpan(
-        text: rootLabel,
-        style: textStyle.copyWith(color: color),
-      ),
-      textDirection: TextDirection.ltr,
-      textAlign: TextAlign.center,
-    )..layout(maxWidth: 150);
-    rootText.paint(
-      canvas,
-      positions[0]! +
-          Offset((174 - rootText.width) / 2, (86 - rootText.height) / 2),
-    );
     for (final item in items) {
       final pos = positions[item['id']];
       if (pos == null) continue;
@@ -96,8 +81,5 @@ class _PreviewPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _PreviewPainter old) =>
-      old.items != items ||
-      old.color != color ||
-      old.textStyle != textStyle ||
-      old.rootLabel != rootLabel;
+      old.items != items || old.color != color || old.textStyle != textStyle;
 }
