@@ -27,9 +27,6 @@ flutter:
       fonts:
         - asset: assets/Xiaolai-Regular.ttf
   assets:
-    - assets/handwriting/korean/
-    - assets/handwriting/chinese/
-    - assets/handwriting/latin/
     - assets/characters/
     - licenses/
 

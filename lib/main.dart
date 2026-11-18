@@ -1278,33 +1278,19 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
                   : null,
             ),
           ),
-          onPressed: () =>
-              selectMode(mode == 'ink' && handwriting ? 'text' : mode),
+          onPressed: () {
+            if (mode == 'ink' && tree) {
+              setState(() => handwriting = !handwriting);
+            } else {
+              selectMode(mode == 'ink' && handwriting ? 'text' : mode);
+            }
+          },
         ),
       );
 
   String currentText() {
     final plain = controller.document.toPlainText();
     return plain.endsWith('\n') ? plain.substring(0, plain.length - 1) : plain;
-  }
-
-  Future<void> useHandwritingText(String text, bool createGraph) async {
-    if (invalidDocument) throw StateError('Invalid note');
-    final existing = currentText();
-    final insertion = '${existing.isEmpty ? '' : '\n'}$text';
-    final offset = controller.document.length - 1;
-    controller.replaceText(
-      offset,
-      0,
-      insertion,
-      TextSelection.collapsed(offset: offset + insertion.length),
-    );
-    save();
-    await pending;
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(tr(context, '변환한 글을 메모에 추가했습니다.'))));
   }
 
   @override
@@ -1378,13 +1364,10 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
                       key: ValueKey(treeRevision),
                       store: widget.store,
                       memoId: widget.id,
+                      drawing: handwriting,
                     )
                   : handwriting
-                  ? HandwritingPad(
-                      store: widget.store,
-                      memoId: widget.id,
-                      onUseText: useHandwritingText,
-                    )
+                  ? HandwritingPad(store: widget.store, memoId: widget.id)
                   : quill.QuillEditor.basic(
                       controller: controller,
                       focusNode: editorFocus,

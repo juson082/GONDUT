@@ -26,7 +26,7 @@ void main() {
             'CREATE TABLE folders(id INTEGER PRIMARY KEY, name TEXT NOT NULL)',
           );
           await db.execute(
-            "CREATE TABLE memos(id INTEGER PRIMARY KEY, text TEXT NOT NULL, updated INTEGER NOT NULL, title TEXT, color INTEGER NOT NULL DEFAULT 4294960081, rich_text TEXT, ink TEXT, title_manual INTEGER NOT NULL DEFAULT 0, folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL, kind TEXT NOT NULL DEFAULT 'note')",
+            "CREATE TABLE memos(id INTEGER PRIMARY KEY, text TEXT NOT NULL, updated INTEGER NOT NULL, title TEXT, color INTEGER NOT NULL DEFAULT 4294960081, rich_text TEXT, ink TEXT, graph_ink TEXT, title_manual INTEGER NOT NULL DEFAULT 0, folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL, kind TEXT NOT NULL DEFAULT 'note')",
           );
           await db.execute(
             'CREATE TABLE nodes(id INTEGER PRIMARY KEY, memo_id INTEGER NOT NULL REFERENCES memos(id) ON DELETE CASCADE, x REAL NOT NULL, y REAL NOT NULL)',
@@ -57,6 +57,7 @@ void main() {
       final memo = await store.addMemo('note');
       await store.moveMemoToFolder(memo, folder);
       await store.setMemoKind(memo, 'graph');
+      await store.saveGraphInk(memo, '[[[12,34],[56,78]]]');
       final node = await store.addBranch(memo, 'body');
       await store.saveBranchContent(
         memo,
@@ -68,6 +69,7 @@ void main() {
       );
       final backup = await store.backup();
       await store.restore(backup);
+      expect(await store.graphInk(memo), '[[[12,34],[56,78]]]');
       expect((await store.folders()).single['name'], 'Projects');
       expect((await store.memos()).single['kind'], 'graph');
       expect((await store.memos()).single['folder_id'], folder);

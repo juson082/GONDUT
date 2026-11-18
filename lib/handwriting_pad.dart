@@ -1,22 +1,16 @@
 import 'dart:convert';
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'store.dart';
 import 'app_strings.dart';
-import 'ink_recognition.dart';
+import 'garden_person.dart';
+import 'garden_routes.dart';
 import 'notebook_motion.dart';
 
 /// Ink coordinates are normalized, so the drawing survives a size change.
 class HandwritingPad extends StatefulWidget {
-  const HandwritingPad({
-    super.key,
-    required this.store,
-    required this.memoId,
-    required this.onUseText,
-  });
+  const HandwritingPad({super.key, required this.store, required this.memoId});
   final Store store;
   final int memoId;
-  final Future<void> Function(String text, bool createGraph) onUseText;
   @override
   State<HandwritingPad> createState() => _HandwritingPadState();
 }
@@ -26,59 +20,16 @@ class _HandwritingPadState extends State<HandwritingPad> {
   final List<List<Offset>> undoneStrokes = [];
   bool loading = true;
   bool failed = false;
-  bool recognizing = false;
-  String? language;
+  bool showCharacters = false;
   Future<void> pending = Future.value();
-  Timer? recognitionTimer;
-  int revision = 0;
-  String? automaticText;
-  double canvasAspect = 1024 / 1400;
-
-  @override
-  void dispose() {
-    recognitionTimer?.cancel();
-    super.dispose();
-  }
-
-  void scheduleRecognition() {
-    revision++;
-    recognitionTimer?.cancel();
-    if (strokes.isEmpty) {
-      setState(() => automaticText = null);
-      return;
-    }
-    final current = revision;
-    recognitionTimer = Timer(const Duration(milliseconds: 1600), () async {
-      if (!mounted || current != revision) return;
-      final snapshot = strokes.map((s) => List<Offset>.of(s)).toList();
-      final lang =
-          language ??
-          (handwritingLanguages.containsKey(
-                Localizations.localeOf(context).languageCode,
-              )
-              ? Localizations.localeOf(context).languageCode
-              : 'en');
-      setState(() => recognizing = true);
-      try {
-        final text = await recognizeHandwriting(
-          snapshot,
-          lang,
-          aspectRatio: canvasAspect,
-        );
-        if (mounted && current == revision)
-          setState(() => automaticText = text);
-      } catch (_) {
-        if (mounted && current == revision) setState(() => automaticText = '');
-      } finally {
-        if (mounted && current == revision) setState(() => recognizing = false);
-      }
-    });
-  }
 
   @override
   void initState() {
     super.initState();
     load();
+    widget.store.charactersEnabled().catchError((_) => false).then((value) {
+      if (mounted) setState(() => showCharacters = value);
+    });
   }
 
   Future<void> load() async {
@@ -120,93 +71,6 @@ class _HandwritingPadState extends State<HandwritingPad> {
     });
   }
 
-  Future<void> recognize() async {
-    if (strokes.isEmpty) return;
-    recognitionTimer?.cancel();
-    revision++;
-    setState(() => recognizing = true);
-    try {
-      await pending;
-      if (!mounted) return;
-      final lang =
-          language ??
-          (handwritingLanguages.containsKey(
-                Localizations.localeOf(context).languageCode,
-              )
-              ? Localizations.localeOf(context).languageCode
-              : 'en');
-      final text = automaticText?.isNotEmpty == true
-          ? automaticText!
-          : await recognizeHandwriting(
-              strokes.map((s) => List<Offset>.of(s)).toList(),
-              lang,
-              aspectRatio: canvasAspect,
-            );
-      if (!mounted) return;
-      if (text.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(tr(context, '손글씨를 읽지 못했습니다. 글씨와 언어를 확인해 주세요.')),
-          ),
-        );
-        return;
-      }
-      final controller = TextEditingController(text: text);
-      final result = await showDialog<(String, bool)>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text(tr(context, '변환 결과 확인')),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(tr(context, '인식 결과를 확인하고 수정해 주세요. 손글씨 원본은 그대로 보관됩니다.')),
-                TextField(
-                  controller: controller,
-                  autofocus: false,
-                  minLines: 3,
-                  maxLines: 8,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(tr(context, '취소')),
-            ),
-            TextButton(
-              onPressed: () =>
-                  Navigator.pop(dialogContext, (controller.text.trim(), false)),
-              child: Text(tr(context, '메모에 추가')),
-            ),
-          ],
-        ),
-      );
-      // Let the dialog exit animation finish using its text field before disposal.
-      Future<void>.delayed(
-        const Duration(milliseconds: 500),
-        controller.dispose,
-      );
-      if (!mounted || result == null) return;
-      if (result.$1.isEmpty) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(tr(context, '추가할 텍스트가 없습니다.'))));
-        return;
-      }
-      await widget.onUseText(result.$1, result.$2);
-    } catch (_) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(tr(context, '변환하지 못했습니다. 손글씨 원본은 보관됩니다.'))),
-        );
-    } finally {
-      if (mounted) setState(() => recognizing = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     if (loading) return Center(child: CircularProgressIndicator());
@@ -235,7 +99,6 @@ class _HandwritingPadState extends State<HandwritingPad> {
                             () => undoneStrokes.add(strokes.removeLast()),
                           );
                           save();
-                          scheduleRecognition();
                         },
                   icon: Icon(Icons.undo),
                 ),
@@ -251,7 +114,6 @@ class _HandwritingPadState extends State<HandwritingPad> {
                             () => strokes.add(undoneStrokes.removeLast()),
                           );
                           save();
-                          scheduleRecognition();
                         },
                   icon: const Icon(Icons.redo),
                 ),
@@ -259,108 +121,63 @@ class _HandwritingPadState extends State<HandwritingPad> {
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: DropdownButton<String>(
-                  isExpanded: true,
-                  value:
-                      language ??
-                      (handwritingLanguages.containsKey(
-                            Localizations.localeOf(context).languageCode,
-                          )
-                          ? Localizations.localeOf(context).languageCode
-                          : 'en'),
-                  items: [
-                    for (final entry in handwritingLanguages.entries)
-                      DropdownMenuItem(
-                        value: entry.key,
-                        child: Text(entry.value),
-                      ),
-                  ],
-                  onChanged: (value) {
-                    setState(() {
-                      language = value;
-                      automaticText = null;
-                    });
-                    scheduleRecognition();
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              NotebookPress(
-                enabled: !recognizing && strokes.isNotEmpty,
-                child: FilledButton.tonal(
-                  onPressed: recognizing || strokes.isEmpty ? null : recognize,
-                  child: Text(
-                    tr(context, recognizing ? '손글씨 인식 중…' : '글자로 변환'),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(
-          height: 60,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                recognizing
-                    ? tr(context, '손글씨 인식 중…')
-                    : (automaticText == ''
-                          ? tr(context, '손글씨를 읽지 못했습니다. 글씨와 언어를 확인해 주세요.')
-                          : automaticText ?? ''),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ),
-        ),
         Expanded(
           child: LayoutBuilder(
             builder: (context, size) {
-              if (size.maxHeight > 0)
-                canvasAspect = size.maxWidth / size.maxHeight;
               Offset normalized(Offset p) => Offset(
                 (p.dx / size.maxWidth).clamp(0, 1),
                 (p.dy / size.maxHeight).clamp(0, 1),
               );
-              return Listener(
-                behavior: HitTestBehavior.opaque,
-                onPointerDown: (e) => setState(() {
-                  recognitionTimer?.cancel();
-                  revision++;
-                  recognizing = false;
-                  automaticText = null;
-                  undoneStrokes.clear();
-                  strokes.add([normalized(e.localPosition)]);
-                }),
-                onPointerMove: (e) {
-                  if (strokes.isNotEmpty)
-                    setState(
-                      () => strokes.last.add(normalized(e.localPosition)),
-                    );
-                },
-                onPointerUp: (_) {
-                  save();
-                  scheduleRecognition();
-                },
-                onPointerCancel: (_) {
-                  save();
-                  scheduleRecognition();
-                },
-                child: CustomPaint(
-                  key: const ValueKey('handwriting-canvas'),
-                  painter: _InkPainter(
-                    strokes,
-                    Theme.of(context).colorScheme.onSurface,
+              return Stack(
+                children: [
+                  Listener(
+                    behavior: HitTestBehavior.opaque,
+                    onPointerDown: (e) => setState(() {
+                      undoneStrokes.clear();
+                      strokes.add([normalized(e.localPosition)]);
+                    }),
+                    onPointerMove: (e) {
+                      if (strokes.isNotEmpty)
+                        setState(
+                          () => strokes.last.add(normalized(e.localPosition)),
+                        );
+                    },
+                    onPointerUp: (_) {
+                      save();
+                    },
+                    onPointerCancel: (_) {
+                      save();
+                    },
+                    child: CustomPaint(
+                      key: const ValueKey('handwriting-canvas'),
+                      painter: _InkPainter(
+                        strokes,
+                        Theme.of(context).colorScheme.onSurface,
+                      ),
+                      child: SizedBox.expand(),
+                    ),
                   ),
-                  child: SizedBox.expand(),
-                ),
+                  if (showCharacters)
+                    for (final entry in inkRoutes([
+                      for (final stroke in strokes)
+                        [
+                          for (final p in stroke)
+                            Offset(p.dx * size.maxWidth, p.dy * size.maxHeight),
+                        ],
+                    ]).take(5).indexed)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: GardenPerson(
+                            key: ValueKey('ink-person-${entry.$1}'),
+                            index: entry.$1,
+                            route: entry.$2,
+                            sceneBounds:
+                                Offset.zero &
+                                Size(size.maxWidth, size.maxHeight),
+                          ),
+                        ),
+                      ),
+                ],
               );
             },
           ),

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:memo_graph/main.dart';
 import 'package:memo_graph/store.dart';
@@ -16,6 +15,7 @@ class MemoryStore extends Store {
   String value = '';
   String? savedRichText;
   String? savedInk;
+  String? savedGraphInk;
   String? savedTitle;
   String theme = 'lavender';
   String language = 'system';
@@ -153,6 +153,13 @@ class MemoryStore extends Store {
 
   @override
   Future<String?> memoInk(int id) async => savedInk;
+  @override
+  Future<String?> graphInk(int id) async => savedGraphInk;
+  @override
+  Future<void> saveGraphInk(int id, String ink) async {
+    savedGraphInk = ink;
+  }
+
   @override
   Future<void> saveMemoInk(int id, String ink) async {
     savedInk = ink;
@@ -507,6 +514,8 @@ void main() {
     final start = tester.getCenter(pad);
     await tester.dragFrom(start, const Offset(35, 25));
     await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('ink-person-0')), findsOneWidget);
+    expect(find.text('글자로 변환'), findsNothing);
     expect(store.savedInk, isNotNull);
     expect(store.savedInk, isNot('[]'));
     await tester.tap(find.byTooltip('마지막 획 되돌리기'));
@@ -520,6 +529,30 @@ void main() {
     await tester.tap(find.byTooltip('손글씨'));
     await tester.pumpAndSettle();
     expect(find.byTooltip('마지막 획 되돌리기'), findsOneWidget);
+  });
+
+  testWidgets('graph drawings are saved separately and restored', (
+    tester,
+  ) async {
+    final store = MemoryStore()..showCharacters = false;
+    Widget graph() => MaterialApp(
+      home: Scaffold(body: MemoTree(store: store, memoId: 1, drawing: true)),
+    );
+    await tester.pumpWidget(graph());
+    await tester.pumpAndSettle();
+    final center = tester.getCenter(find.byType(InteractiveViewer));
+    await tester.dragFrom(center, const Offset(80, 20));
+    await tester.pumpAndSettle();
+    expect(store.savedGraphInk, isNotNull);
+    expect(store.savedInk, isNull);
+    final saved = store.savedGraphInk;
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(graph());
+    await tester.pumpAndSettle();
+    expect(store.savedGraphInk, saved);
+    await tester.tap(find.byTooltip('Undo last stroke'));
+    await tester.pump();
+    expect(store.savedGraphInk, '[]');
   });
 
   testWidgets(
@@ -623,6 +656,39 @@ void main() {
     expect(store.treeItems.single['x'], isNot(moved));
   });
 
+  testWidgets('move confirmation is translated and automatically dismissed', (
+    tester,
+  ) async {
+    final store = MemoryStore()..showCharacters = false;
+    store.treeItems.add({
+      'id': 1,
+      'memo_id': 1,
+      'parent_id': null,
+      'text': 'branch',
+      'position': 1,
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        home: Scaffold(body: MemoTree(store: store, memoId: 1)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('branch')),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.moveBy(const Offset(80, 35));
+    await gesture.up();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Branch moved.'), findsOneWidget);
+    expect(find.text('Undo'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(find.text('Branch moved.'), findsNothing);
+  });
+
   testWidgets('tapping a branch reveals its text and editing actions', (
     tester,
   ) async {
@@ -698,57 +764,6 @@ void main() {
       '수정한 생각\n두 번째 줄',
     );
   });
-
-  testWidgets(
-    'recognized handwriting is reviewed before being added to the note',
-    (tester) async {
-      final store = MemoryStore();
-      final messenger =
-          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-      const channel = MethodChannel('memo_graph/handwriting');
-      messenger.setMockMethodCallHandler(channel, (call) async {
-        expect(call.method, 'recognize');
-        expect(call.arguments['language'], 'ko');
-        expect(call.arguments['strokes'], isNotEmpty);
-        return '인식된 문장';
-      });
-      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
-      await tester.pumpWidget(
-        MaterialApp(
-          locale: const Locale('ko'),
-          supportedLocales: const [Locale('ko')],
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-            quill.FlutterQuillLocalizations.delegate,
-          ],
-          home: Editor(store, 1, '기존 메모'),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('손글씨'));
-      await tester.pumpAndSettle();
-      await tester.dragFrom(
-        tester.getCenter(find.byKey(const ValueKey('handwriting-canvas'))),
-        const Offset(35, 25),
-      );
-      await tester.pump(const Duration(milliseconds: 1700));
-      await tester.pumpAndSettle();
-      expect(find.text('인식된 문장'), findsOneWidget);
-      final ink = store.savedInk;
-      await tester.tap(find.text('글자로 변환'));
-      await tester.pumpAndSettle();
-      expect(find.text('변환 결과 확인'), findsOneWidget);
-      expect(store.value, isNot(contains('인식된 문장')));
-      await tester.enterText(find.byType(TextField), '사용자가 수정한 문장');
-      await tester.tap(find.text('메모에 추가'));
-      await tester.pumpAndSettle();
-      expect(store.value, '기존 메모\n사용자가 수정한 문장');
-      expect(store.savedInk, ink);
-      await tester.pump(const Duration(milliseconds: 600));
-    },
-  );
 
   testWidgets('settings changes and saves the app theme', (tester) async {
     final store = MemoryStore();
@@ -850,11 +865,7 @@ void main() {
     ('en', 'Tap the screen to create a node', 'AI process draft'),
     ('ja', '画面をタップしてノードを作成', 'AIの過程下書き'),
     ('zh', '点击屏幕创建节点', 'AI 过程草稿'),
-    (
-      'es',
-      'Toca la pantalla para crear un nodo',
-      'Borrador de proceso con IA',
-    ),
+    ('es', 'Toca la pantalla para crear un nodo', 'Borrador de proceso con IA'),
   ]) {
     testWidgets('tree controls use the selected ${entry.$1} language', (
       tester,

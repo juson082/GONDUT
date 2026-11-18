@@ -9,7 +9,7 @@ class Store {
   Future<void> open({String? path}) async {
     db = await openDatabase(
       path ?? join(await getDatabasesPath(), 'memo_graph.db'),
-      version: 10,
+      version: 11,
       onConfigure: (d) => d.execute('PRAGMA foreign_keys = ON'),
       onCreate: (d, _) async {
         await d.execute(
@@ -29,6 +29,7 @@ class Store {
         );
         await d.execute('ALTER TABLE memos ADD COLUMN rich_text TEXT');
         await d.execute('ALTER TABLE memos ADD COLUMN ink TEXT');
+        await d.execute('ALTER TABLE memos ADD COLUMN graph_ink TEXT');
         await d.execute(
           'ALTER TABLE memos ADD COLUMN title_manual INTEGER NOT NULL DEFAULT 0',
         );
@@ -73,6 +74,8 @@ class Store {
           );
         }
         if (oldVersion < 10) await _addOrganization(d);
+        if (oldVersion < 11)
+          await d.execute('ALTER TABLE memos ADD COLUMN graph_ink TEXT');
       },
     );
   }
@@ -227,6 +230,25 @@ class Store {
       whereArgs: [id],
     );
     return rows.isEmpty ? null : rows.single['ink'] as String?;
+  }
+
+  Future<String?> graphInk(int id) async {
+    final rows = await db.query(
+      'memos',
+      columns: ['graph_ink'],
+      where: 'id=?',
+      whereArgs: [id],
+    );
+    return rows.isEmpty ? null : rows.single['graph_ink'] as String?;
+  }
+
+  Future<void> saveGraphInk(int id, String ink) async {
+    await db.update(
+      'memos',
+      {'graph_ink': ink, 'updated': DateTime.now().millisecondsSinceEpoch},
+      where: 'id=?',
+      whereArgs: [id],
+    );
   }
 
   Future<void> saveMemoInk(int id, String ink) async {
@@ -464,7 +486,7 @@ class Store {
 
   Future<String> backup() => db.transaction(
     (tx) async => jsonEncode({
-      'version': 10,
+      'version': 11,
       'folders': await tx.query('folders', orderBy: 'id'),
       'memos': await tx.query('memos'),
       'nodes': await tx.query('nodes'),
@@ -847,7 +869,8 @@ class Store {
             decoded['version'] != 7 &&
             decoded['version'] != 8 &&
             decoded['version'] != 9 &&
-            decoded['version'] != 10) ||
+            decoded['version'] != 10 &&
+            decoded['version'] != 11) ||
         decoded['memos'] is! List ||
         decoded['nodes'] is! List ||
         decoded['edges'] is! List) {

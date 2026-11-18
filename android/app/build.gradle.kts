@@ -52,7 +52,3 @@ kotlin {
 flutter {
     source = "../.."
 }
-
-dependencies {
-    implementation(files("libs/onnxruntime-android-1.28.0.aar"))
-}

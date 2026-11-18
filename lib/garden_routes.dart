@@ -13,6 +13,25 @@ class GardenRoute {
 const gardenSpriteWidth = 22.0;
 const gardenSpriteHeight = 48.0;
 
+List<GardenRoute> inkRoutes(List<List<Offset>> strokes) {
+  final result = <GardenRoute>[];
+  for (final stroke in strokes) {
+    if (stroke.length < 2) continue;
+    final bounds = Rect.fromPoints(stroke.first, stroke.first);
+    final rect = stroke
+        .skip(1)
+        .fold<Rect>(bounds, (r, p) => r.expandToInclude(Rect.fromPoints(p, p)));
+    result.add(
+      GardenRoute(
+        List.unmodifiable(stroke),
+        rect.inflate(gardenSpriteHeight),
+        -100 - result.length,
+      ),
+    );
+  }
+  return result;
+}
+
 /// Select short, unobstructed branch segments without moving any nodes.
 List<GardenRoute> gardenRoutes(
   List<Map<String, Object?>> items,
