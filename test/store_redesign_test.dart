@@ -246,6 +246,7 @@ void main() {
     final upgraded = Store();
     try {
       await upgraded.open(path: path);
+      expect(await upgraded.tutorialComplete(), isTrue);
       expect(await upgraded.memoText(7), 'kept');
       expect(await upgraded.nodes(), hasLength(1));
       expect(await upgraded.memoRichText(7), isNull);
@@ -255,6 +256,15 @@ void main() {
     } finally {
       await dir.delete(recursive: true);
     }
+  });
+
+  test('a new database records tutorial completion', () async {
+    final fresh = Store();
+    await fresh.open(path: inMemoryDatabasePath);
+    expect(await fresh.tutorialComplete(), isFalse);
+    await fresh.setTutorialComplete();
+    expect(await fresh.tutorialComplete(), isTrue);
+    await fresh.db.close();
   });
 
   test('rich text and nested branches survive backup and restore', () async {

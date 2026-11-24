@@ -16,6 +16,7 @@ import 'tree_preview.dart';
 import 'sketch_icons.dart';
 import 'memo_tree.dart';
 import 'handwriting_pad.dart';
+import 'spotlight_tutorial.dart';
 import 'app_strings.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -134,6 +135,9 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
+  final tutorialCreateKey = GlobalKey();
+  final tutorialMenuKey = GlobalKey();
+  int tutorialStep = -1;
   int tab = 0;
   String query = '';
   bool inbox = false;
@@ -148,6 +152,36 @@ class _HomeState extends State<Home> {
   void initState() {
     super.initState();
     refresh();
+    widget.store
+        .tutorialComplete()
+        .then((complete) {
+          if (mounted && !complete) setState(() => tutorialStep = 0);
+        })
+        .catchError((_) {});
+  }
+
+  Future<void> finishTutorial() async {
+    if (mounted) setState(() => tutorialStep = -1);
+    try {
+      await widget.store.setTutorialComplete();
+    } catch (_) {
+      /* Retry on next launch. */
+    }
+  }
+
+  Future<void> nextHomeTutorial() async {
+    if (tutorialStep == 0) {
+      setState(() => tutorialStep = 1);
+      return;
+    }
+    setState(() => tutorialStep = -1);
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => Editor(_TutorialStore(), 0, '', tutorial: true),
+      ),
+    );
+    await finishTutorial();
   }
 
   Future<void> refresh() async {
@@ -444,84 +478,114 @@ class _HomeState extends State<Home> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(
-        'GONDUT',
-        style: TextStyle(
-          fontFamily: 'GondutHand',
-          fontSize: 28,
-          letterSpacing: 2,
-        ),
-      ),
-      actions: [
-        PopupMenuButton<String>(
-          onSelected: (v) {
-            if (v == 'backup') {
-              backup();
-            } else if (v == 'restore') {
-              restore();
-            } else if (v == 'settings') {
-              showSettings();
-            } else if (v == 'legacy') {
-              showLegacyGraph();
-            } else if (v == 'licenses') {
-              showLicensePage(context: context, applicationName: 'GONDUT');
-            } else {
-              showDialog<void>(
-                context: context,
-                builder: (c) => AlertDialog(
-                  title: Text(tr(context, '개인정보와 저장')),
-                  content: SingleChildScrollView(
-                    child: Text(
-                      tr(
-                        context,
-                        '메모와 그래프는 기기에 저장됩니다. 앱은 계정이나 클라우드 동기화를 제공하지 않습니다.\n\n백업 파일은 암호화되지 않습니다. 앱을 삭제하면 기기 내부 기록이 삭제됩니다.\n\n운영자: J.MEN\n문의: juson082@gmail.com',
+  Widget build(BuildContext context) => Stack(
+    children: [
+      Scaffold(
+        appBar: AppBar(
+          title: Text(
+            'GONDUT',
+            style: TextStyle(
+              fontFamily: 'GondutHand',
+              fontSize: 28,
+              letterSpacing: 2,
+            ),
+          ),
+          actions: [
+            PopupMenuButton<String>(
+              key: tutorialMenuKey,
+              onSelected: (v) {
+                if (v == 'backup') {
+                  backup();
+                } else if (v == 'restore') {
+                  restore();
+                } else if (v == 'settings') {
+                  showSettings();
+                } else if (v == 'tutorial') {
+                  setState(() => tutorialStep = 0);
+                } else if (v == 'legacy') {
+                  showLegacyGraph();
+                } else if (v == 'licenses') {
+                  showLicensePage(context: context, applicationName: 'GONDUT');
+                } else {
+                  showDialog<void>(
+                    context: context,
+                    builder: (c) => AlertDialog(
+                      title: Text(tr(context, '개인정보와 저장')),
+                      content: SingleChildScrollView(
+                        child: Text(
+                          tr(
+                            context,
+                            '메모와 그래프는 기기에 저장됩니다. 앱은 계정이나 클라우드 동기화를 제공하지 않습니다.\n\n백업 파일은 암호화되지 않습니다. 앱을 삭제하면 기기 내부 기록이 삭제됩니다.\n\n운영자: J.MEN\n문의: juson082@gmail.com',
+                          ),
+                        ),
                       ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(c),
+                          child: Text(tr(context, '닫기')),
+                        ),
+                      ],
                     ),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(c),
-                      child: Text(tr(context, '닫기')),
-                    ),
-                  ],
+                  );
+                }
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'tutorial',
+                  child: Text(tr(context, '사용 방법')),
                 ),
-              );
-            }
-          },
-          itemBuilder: (_) => [
-            PopupMenuItem(
-              value: 'settings',
-              child: Text(tr(context, '설정 · 테마')),
-            ),
-            PopupMenuItem(value: 'backup', child: Text(tr(context, '백업 저장'))),
-            PopupMenuItem(value: 'restore', child: Text(tr(context, '백업 복원'))),
-            PopupMenuItem(
-              value: 'licenses',
-              child: Text(tr(context, '오픈소스 라이선스')),
-            ),
-            if (nodes.isNotEmpty)
-              PopupMenuItem(
-                value: 'legacy',
-                child: Text(tr(context, '이전 그래프 기록 보기')),
-              ),
-            PopupMenuItem(
-              value: 'privacy',
-              child: Text(tr(context, '개인정보와 저장')),
+                PopupMenuItem(
+                  value: 'settings',
+                  child: Text(tr(context, '설정 · 테마')),
+                ),
+                PopupMenuItem(
+                  value: 'backup',
+                  child: Text(tr(context, '백업 저장')),
+                ),
+                PopupMenuItem(
+                  value: 'restore',
+                  child: Text(tr(context, '백업 복원')),
+                ),
+                PopupMenuItem(
+                  value: 'licenses',
+                  child: Text(tr(context, '오픈소스 라이선스')),
+                ),
+                if (nodes.isNotEmpty)
+                  PopupMenuItem(
+                    value: 'legacy',
+                    child: Text(tr(context, '이전 그래프 기록 보기')),
+                  ),
+                PopupMenuItem(
+                  value: 'privacy',
+                  child: Text(tr(context, '개인정보와 저장')),
+                ),
+              ],
             ),
           ],
         ),
-      ],
-    ),
-    body: memoPage(),
-    floatingActionButton: NotebookPress(
-      child: FloatingActionButton.extended(
-        onPressed: createItem,
-        icon: SketchIcon('add'),
-        label: Text(tr(context, '새 메모')),
+        body: memoPage(),
+        floatingActionButton: NotebookPress(
+          child: FloatingActionButton.extended(
+            key: tutorialCreateKey,
+            onPressed: createItem,
+            icon: SketchIcon('add'),
+            label: Text(tr(context, '새 메모')),
+          ),
+        ),
       ),
-    ),
+      if (tutorialStep >= 0)
+        Positioned.fill(
+          child: SpotlightTutorial(
+            target: tutorialStep == 0 ? tutorialCreateKey : tutorialMenuKey,
+            radius: tutorialStep == 0 ? 32 : 24,
+            message: tutorialStep == 0
+                ? '새 메모에서 노트, 그래프, 폴더를 만들어요.'
+                : '여기서 테마와 언어를 바꾸고 백업할 수 있어요.',
+            onNext: nextHomeTutorial,
+            onSkip: finishTutorial,
+          ),
+        ),
+    ],
   );
 
   Future<void> showLegacyGraph() async {
@@ -1113,6 +1177,7 @@ class Editor extends StatefulWidget {
     this.initialRichText,
     this.initialTitle,
     this.initialTree = false,
+    this.tutorial = false,
   });
   final Store store;
   final int id;
@@ -1120,11 +1185,18 @@ class Editor extends StatefulWidget {
   final String? initialRichText;
   final String? initialTitle;
   final bool initialTree;
+  final bool tutorial;
   @override
   State<Editor> createState() => _EditorState();
 }
 
 class _EditorState extends State<Editor> with WidgetsBindingObserver {
+  final tutorialTitleKey = GlobalKey();
+  final tutorialPaperKey = GlobalKey();
+  final tutorialToolbarKey = GlobalKey();
+  final tutorialGraphKey = GlobalKey();
+  final tutorialInkKey = GlobalKey();
+  int tutorialStep = 0;
   late quill.QuillController controller;
   final FocusNode editorFocus = FocusNode();
   final ScrollController editorScroll = ScrollController();
@@ -1259,6 +1331,11 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
 
   Widget modeButton(String mode, IconData icon, String label, bool selected) =>
       NotebookPress(
+        key: mode == 'tree'
+            ? tutorialGraphKey
+            : mode == 'ink'
+            ? tutorialInkKey
+            : null,
         child: IconButton(
           tooltip: tr(context, label),
           isSelected: selected,
@@ -1322,143 +1399,210 @@ class _EditorState extends State<Editor> with WidgetsBindingObserver {
         return false;
       }
     },
-    child: Scaffold(
-      appBar: AppBar(
-        title: InkWell(
-          onTap: editTitle,
-          borderRadius: BorderRadius.circular(8),
-          child: Semantics(
-            button: true,
-            label: tr(context, '제목 수정'),
-            child: Text(
-              noteTitle.isEmpty ? tr(context, '내 노트') : noteTitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ),
-        actions: [
-          modeButton(
-            'text',
-            Icons.edit_note_rounded,
-            '글쓰기',
-            !tree && !handwriting,
-          ),
-          modeButton('tree', Icons.device_hub_rounded, '나무 그래프', tree),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: Column(
-        children: [
-          if (invalidDocument)
-            Padding(
-              padding: EdgeInsets.all(12),
-              child: Text(
-                tr(context, '서식 데이터를 읽을 수 없어 원문을 읽기 전용으로 보여줍니다. 백업을 보관해 주세요.'),
+    child: Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(
+            title: InkWell(
+              key: tutorialTitleKey,
+              onTap: editTitle,
+              borderRadius: BorderRadius.circular(8),
+              child: Semantics(
+                button: true,
+                label: tr(context, '제목 수정'),
+                child: Text(
+                  noteTitle.isEmpty ? tr(context, '내 노트') : noteTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ),
-          Expanded(
-            child: PaperSurface(
-              child: tree
-                  ? MemoTree(
-                      key: ValueKey(treeRevision),
-                      store: widget.store,
-                      memoId: widget.id,
-                      drawing: handwriting,
-                    )
-                  : handwriting
-                  ? HandwritingPad(store: widget.store, memoId: widget.id)
-                  : quill.QuillEditor.basic(
-                      controller: controller,
-                      focusNode: editorFocus,
-                      scrollController: editorScroll,
-                      config: quill.QuillEditorConfig(
-                        padding: EdgeInsets.all(22),
-                        placeholder: tr(context, '생각을 적어 보세요'),
-                        autoFocus: false,
-                        customStyles: quill.DefaultStyles(
-                          paragraph: quill.DefaultStyles.getInstance(context)
-                              .paragraph
-                              ?.copyWith(
-                                style: quill.DefaultStyles.getInstance(context)
-                                    .paragraph!
-                                    .style
-                                    .copyWith(
-                                      fontFamily: Theme.of(
-                                        context,
-                                      ).textTheme.bodyLarge?.fontFamily,
-                                      fontFamilyFallback: Theme.of(
-                                        context,
-                                      ).textTheme.bodyLarge?.fontFamilyFallback,
-                                      fontSize: 22,
-                                      height: 1.25,
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurface,
-                                      fontWeight: FontWeight.normal,
-                                      decoration: TextDecoration.none,
-                                    ),
-                              ),
-                        ),
-                      ),
-                    ),
-            ),
+            actions: [
+              modeButton(
+                'text',
+                Icons.edit_note_rounded,
+                '글쓰기',
+                !tree && !handwriting,
+              ),
+              modeButton('tree', Icons.device_hub_rounded, '나무 그래프', tree),
+              const SizedBox(width: 8),
+            ],
           ),
-          Material(
-            color: Theme.of(context).colorScheme.surface,
-            child: SafeArea(
-              top: false,
-              child: Row(
-                children: [
-                  modeButton(
-                    'ink',
-                    handwriting ? Icons.keyboard_outlined : Icons.gesture,
-                    handwriting ? '키보드 입력' : '손글씨',
-                    handwriting,
+          body: Column(
+            children: [
+              if (invalidDocument)
+                Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Text(
+                    tr(
+                      context,
+                      '서식 데이터를 읽을 수 없어 원문을 읽기 전용으로 보여줍니다. 백업을 보관해 주세요.',
+                    ),
                   ),
-                  if (!tree && !handwriting && !invalidDocument)
-                    Expanded(
-                      child: TextFieldTapRegion(
-                        child: quill.QuillSimpleToolbar(
+                ),
+              Expanded(
+                child: PaperSurface(
+                  key: tutorialPaperKey,
+                  child: tree
+                      ? MemoTree(
+                          key: ValueKey(treeRevision),
+                          store: widget.store,
+                          memoId: widget.id,
+                          drawing: handwriting,
+                        )
+                      : handwriting
+                      ? HandwritingPad(store: widget.store, memoId: widget.id)
+                      : quill.QuillEditor.basic(
                           controller: controller,
-                          config: quill.QuillSimpleToolbarConfig(
-                            multiRowsDisplay: false,
-                            showFontFamily: true,
-                            showFontSize: true,
-                            showBoldButton: true,
-                            showItalicButton: true,
-                            showUnderLineButton: true,
-                            showStrikeThrough: true,
-                            showInlineCode: false,
-                            showColorButton: true,
-                            showBackgroundColorButton: true,
-                            showClearFormat: true,
-                            showAlignmentButtons: true,
-                            showHeaderStyle: true,
-                            showListNumbers: true,
-                            showListBullets: true,
-                            showListCheck: true,
-                            showCodeBlock: false,
-                            showQuote: true,
-                            showIndent: true,
-                            showLink: true,
-                            showUndo: true,
-                            showRedo: true,
-                            showSearchButton: true,
-                            showSubscript: false,
-                            showSuperscript: false,
+                          focusNode: editorFocus,
+                          scrollController: editorScroll,
+                          config: quill.QuillEditorConfig(
+                            padding: EdgeInsets.all(22),
+                            placeholder: tr(context, '생각을 적어 보세요'),
+                            autoFocus: false,
+                            customStyles: quill.DefaultStyles(
+                              paragraph:
+                                  quill.DefaultStyles.getInstance(
+                                    context,
+                                  ).paragraph?.copyWith(
+                                    style:
+                                        quill.DefaultStyles.getInstance(
+                                          context,
+                                        ).paragraph!.style.copyWith(
+                                          fontFamily: Theme.of(
+                                            context,
+                                          ).textTheme.bodyLarge?.fontFamily,
+                                          fontFamilyFallback: Theme.of(context)
+                                              .textTheme
+                                              .bodyLarge
+                                              ?.fontFamilyFallback,
+                                          fontSize: 22,
+                                          height: 1.25,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.onSurface,
+                                          fontWeight: FontWeight.normal,
+                                          decoration: TextDecoration.none,
+                                        ),
+                                  ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                ],
+                ),
               ),
+              Material(
+                key: tutorialToolbarKey,
+                color: Theme.of(context).colorScheme.surface,
+                child: SafeArea(
+                  top: false,
+                  child: Row(
+                    children: [
+                      modeButton(
+                        'ink',
+                        handwriting ? Icons.keyboard_outlined : Icons.gesture,
+                        handwriting ? '키보드 입력' : '손글씨',
+                        handwriting,
+                      ),
+                      if (!tree && !handwriting && !invalidDocument)
+                        Expanded(
+                          child: TextFieldTapRegion(
+                            child: quill.QuillSimpleToolbar(
+                              controller: controller,
+                              config: quill.QuillSimpleToolbarConfig(
+                                multiRowsDisplay: false,
+                                showFontFamily: true,
+                                showFontSize: true,
+                                showBoldButton: true,
+                                showItalicButton: true,
+                                showUnderLineButton: true,
+                                showStrikeThrough: true,
+                                showInlineCode: false,
+                                showColorButton: true,
+                                showBackgroundColorButton: true,
+                                showClearFormat: true,
+                                showAlignmentButtons: true,
+                                showHeaderStyle: true,
+                                showListNumbers: true,
+                                showListBullets: true,
+                                showListCheck: true,
+                                showCodeBlock: false,
+                                showQuote: true,
+                                showIndent: true,
+                                showLink: true,
+                                showUndo: true,
+                                showRedo: true,
+                                showSearchButton: true,
+                                showSubscript: false,
+                                showSuperscript: false,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (widget.tutorial)
+          Positioned.fill(
+            child: SpotlightTutorial(
+              target: switch (tutorialStep) {
+                0 => tutorialTitleKey,
+                1 => tutorialPaperKey,
+                2 => tutorialToolbarKey,
+                3 => tutorialGraphKey,
+                4 || 5 || 6 => tutorialPaperKey,
+                _ => tutorialInkKey,
+              },
+              radius: switch (tutorialStep) {
+                0 => 8,
+                1 || 4 || 5 || 6 => 4,
+                2 => 0,
+                _ => 24,
+              },
+              insets: switch (tutorialStep) {
+                1 || 4 || 5 || 6 => const EdgeInsets.fromLTRB(12, 5, 12, 8),
+                _ => EdgeInsets.zero,
+              },
+              message: switch (tutorialStep) {
+                0 => '제목을 누르면 이름을 바꿀 수 있어요.',
+                1 => '여기에 생각을 적어요. 내용은 자동 저장돼요.',
+                2 => '아래 도구를 옆으로 넘겨 글꼴과 서식을 바꿔요.',
+                3 => '이 버튼으로 나무 그래프를 열어요.',
+                4 => '빈 그래프는 한 번, 이후에는 빈 곳을 두 번 눌러 노드를 만들어요.',
+                5 => '노드를 눌러 내용을 고치고, 길게 눌러 옮겨요. 가까운 노드에 연결돼요.',
+                6 => '두 손가락으로 확대해요. 노드 메뉴에서 모양과 연결도 바꿀 수 있어요.',
+                _ => '펜 버튼으로 손글씨와 그림을 남겨요. 소인도 획과 가지를 따라 걸어요.',
+              },
+              last: tutorialStep == 7,
+              onSkip: () => Navigator.pop(context),
+              onNext: () {
+                if (tutorialStep == 7) {
+                  Navigator.pop(context);
+                  return;
+                }
+                if (tutorialStep == 3) selectMode('tree');
+                setState(() => tutorialStep++);
+              },
             ),
           ),
-        ],
-      ),
+      ],
     ),
   );
+}
+
+/// The demonstration never writes to the user's notes or graph.
+class _TutorialStore extends Store {
+  @override
+  Future<void> saveRichMemo(int id, String text, String rich) async {}
+  @override
+  Future<List<Map<String, Object?>>> branches(int memoId) async => [];
+  @override
+  Future<bool> charactersEnabled() async => false;
+  @override
+  Future<String?> graphInk(int id) async => null;
 }
 
 class EdgesPainter extends CustomPainter {

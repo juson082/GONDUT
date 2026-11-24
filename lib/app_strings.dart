@@ -13,6 +13,26 @@ String tr(BuildContext context, String korean) {
 }
 
 const _english = <String, String>{
+  '사용 방법': 'How to use',
+  '건너뛰기': 'Skip',
+  '다음': 'Next',
+  '완료': 'Done',
+  '새 메모에서 노트, 그래프, 폴더를 만들어요.': 'Create a note, graph, or folder here.',
+  '여기서 테마와 언어를 바꾸고 백업할 수 있어요.':
+      'Change themes and language or back up your notes here.',
+  '제목을 누르면 이름을 바꿀 수 있어요.': 'Tap the title to rename it.',
+  '여기에 생각을 적어요. 내용은 자동 저장돼요.':
+      'Write your thoughts here. They save automatically.',
+  '아래 도구를 옆으로 넘겨 글꼴과 서식을 바꿔요.': 'Swipe the toolbar to format your text.',
+  '이 버튼으로 나무 그래프를 열어요.': 'Open your tree graph here.',
+  '두 손가락으로 확대해요. 노드 메뉴에서 모양과 연결도 바꿀 수 있어요.':
+      'Pinch to zoom. Use a node’s menu to change its shape or connection.',
+  '빈 그래프는 한 번, 이후에는 빈 곳을 두 번 눌러 노드를 만들어요.':
+      'Tap an empty graph once for the first node. Double-tap empty space for more.',
+  '노드를 눌러 내용을 고치고, 길게 눌러 옮겨요. 가까운 노드에 연결돼요.':
+      'Tap a node to edit it. Hold and drag to move and connect it.',
+  '펜 버튼으로 손글씨와 그림을 남겨요. 소인도 획과 가지를 따라 걸어요.':
+      'Use the pen to draw or write by hand. Little people walk along your lines and branches.',
   '이전 초안 확인': 'View previous draft',
   '메모와 그래프는 기기에 저장됩니다. 앱은 계정이나 클라우드 동기화를 제공하지 않습니다.\n\n백업 파일은 암호화되지 않습니다. 앱을 삭제하면 기기 내부 기록이 삭제됩니다.\n\n운영자: J.MEN\n문의: juson082@gmail.com':
       'Notes and graphs are stored on your device. The app has no accounts or cloud sync.\n\nBackups are not encrypted. Uninstalling deletes local records.\n\nOperator: J.MEN\nContact: juson082@gmail.com',

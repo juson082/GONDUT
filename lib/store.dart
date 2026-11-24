@@ -9,7 +9,7 @@ class Store {
   Future<void> open({String? path}) async {
     db = await openDatabase(
       path ?? join(await getDatabasesPath(), 'memo_graph.db'),
-      version: 11,
+      version: 12,
       onConfigure: (d) => d.execute('PRAGMA foreign_keys = ON'),
       onCreate: (d, _) async {
         await d.execute(
@@ -76,6 +76,12 @@ class Store {
         if (oldVersion < 10) await _addOrganization(d);
         if (oldVersion < 11)
           await d.execute('ALTER TABLE memos ADD COLUMN graph_ink TEXT');
+        if (oldVersion < 12) {
+          await d.insert('settings', {
+            'key': 'tutorial_complete',
+            'value': 'yes',
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
       },
     );
   }
@@ -422,6 +428,22 @@ class Store {
       whereArgs: ['characters'],
     );
     return rows.isEmpty || rows.single['value'] != 'off';
+  }
+
+  Future<bool> tutorialComplete() async {
+    final rows = await db.query(
+      'settings',
+      where: 'key=?',
+      whereArgs: ['tutorial_complete'],
+    );
+    return rows.isNotEmpty && rows.single['value'] == 'yes';
+  }
+
+  Future<void> setTutorialComplete() async {
+    await db.insert('settings', {
+      'key': 'tutorial_complete',
+      'value': 'yes',
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<void> setCharactersEnabled(bool enabled) async {

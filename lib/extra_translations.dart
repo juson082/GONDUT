@@ -15,6 +15,60 @@ String? additionalTranslation(String code, String english) {
 }
 
 const _translations = <String, (String, String, String)>{
+  'Pinch to zoom. Use a node’s menu to change its shape or connection.': (
+    'ピンチで拡大・縮小。ノードのメニューで形や接続を変更できます。',
+    '双指缩放。在节点菜单中更改形状或连接。',
+    'Pellizca para ampliar. Cambia la forma o conexión desde el menú del nodo.',
+  ),
+  'How to use': ('使い方', '使用方法', 'Cómo usar'),
+  'Skip': ('スキップ', '跳过', 'Omitir'),
+  'Next': ('次へ', '下一步', 'Siguiente'),
+  'Done': ('完了', '完成', 'Listo'),
+  'Create a note, graph, or folder here.': (
+    'ここからノート、グラフ、フォルダーを作成できます。',
+    '在这里创建笔记、图表或文件夹。',
+    'Crea una nota, un gráfico o una carpeta aquí.',
+  ),
+  'Change themes and language or back up your notes here.': (
+    'ここでテーマや言語の変更、バックアップができます。',
+    '在这里更改主题和语言，或备份笔记。',
+    'Cambia el tema y el idioma o guarda una copia aquí.',
+  ),
+  'Tap the title to rename it.': (
+    'タイトルをタップして名前を変更できます。',
+    '点击标题即可重命名。',
+    'Toca el título para cambiarlo.',
+  ),
+  'Write your thoughts here. They save automatically.': (
+    'ここに思いを書きます。内容は自動保存されます。',
+    '在这里记录想法，内容会自动保存。',
+    'Escribe tus ideas aquí. Se guardan automáticamente.',
+  ),
+  'Swipe the toolbar to format your text.': (
+    'ツールバーを横にスワイプして書式を変更できます。',
+    '左右滑动工具栏，更改文字格式。',
+    'Desliza la barra para dar formato al texto.',
+  ),
+  'Open your tree graph here.': (
+    'ここからツリーグラフを開きます。',
+    '在这里打开树状图。',
+    'Abre aquí tu árbol de ideas.',
+  ),
+  'Tap an empty graph once for the first node. Double-tap empty space for more.': (
+    '最初のノードは空の画面を一度タップ。追加は空白をダブルタップします。',
+    '点击空白图表创建首个节点；之后双击空白处添加。',
+    'Toca el gráfico vacío para crear el primer nodo. Para añadir otros, toca dos veces.',
+  ),
+  'Tap a node to edit it. Hold and drag to move and connect it.': (
+    'ノードをタップして編集。長押しして移動・接続できます。',
+    '点击节点编辑；长按拖动以移动和连接。',
+    'Toca un nodo para editarlo. Mantenlo pulsado y arrastra para moverlo y conectarlo.',
+  ),
+  'Use the pen to draw or write by hand. Little people walk along your lines and branches.': (
+    'ペンで手書きやお絵かきができます。小人たちは線や枝を歩きます。',
+    '用画笔手写或画画，小人会沿线条和树枝行走。',
+    'Usa el lápiz para dibujar o escribir a mano. Los personajes caminan por tus trazos y ramas.',
+  ),
   'View previous draft': ('以前の下書きを表示', '查看以前的草稿', 'Ver borrador anterior'),
   'Notes and graphs are stored on your device. The app has no accounts or cloud sync.\n\nBackups are not encrypted. Uninstalling deletes local records.\n\nOperator: J.MEN\nContact: juson082@gmail.com': (
     'メモとグラフは端末に保存されます。アカウントやクラウド同期はありません。\n\nバックアップは暗号化されません。アプリを削除すると端末内の記録も削除されます。\n\n運営者: J.MEN\nお問い合わせ: juson082@gmail.com',
